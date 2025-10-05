@@ -1,0 +1,9 @@
+# Ignora file binario
+FingerPrintSensor.exe
+
+id_ed25519
+id_ed25519.pub
+
+# Ignora file di configurazione VS Code
+.vscode/launch.json
+.vscode/c_cpp_properties.json

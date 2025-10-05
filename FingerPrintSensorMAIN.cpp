@@ -9,11 +9,8 @@ int main(void)
 {
     std::cout << "Hello World!!!!!!!!!!" << std::endl;
 
-    // R558 mySensor; // test error: (SER_P_COM2, SER_P_BAUDRATE_9600);
-    R558 mySensor(SER_P_COM10, SER_P_BAUDRATE_57600);
-
-    // mySensor.SendHello();
-    // mySensor.GetHello();
+    R558 mySensor; // test error: (SER_P_COM2, SER_P_BAUDRATE_9600);
+    // R558 mySensor(SER_P_COM10, SER_P_BAUDRATE_57600);
 
 #if 1 // verify password
     // while (1)
@@ -48,11 +45,11 @@ int main(void)
     }
 #endif
 
-#if 0 // enroll
+#if 1 // enroll
     mySensor.R558_Enroll(1);
 #endif
 
-#if 0 // verify finger
+#if 1 // verify finger
 
     uint16_t out_page_id;
     uint16_t out_score;
@@ -69,5 +66,8 @@ int main(void)
     }
 #endif
 
+    // to be removed
+    //  mySensor.SendHello();
+    //  mySensor.GetHello();
     return 0;
 }

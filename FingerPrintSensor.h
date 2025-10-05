@@ -30,10 +30,12 @@ public:
     /* Delete Fingerprints starting from -> from_ID, number of FP to be deleted -> num_fp */
     SENS_StatusTypeDef R558_DeleteFingerprints(uint16_t from_ID, uint16_t num_fp);
 
+    SENS_StatusTypeDef R558_GetTemplateNum(uint16_t *out_temp_num);
+
+    // to be removed
     void SendHello();
     void GetHello();
-
-    SENS_StatusTypeDef R558_GetTemplateNum(uint16_t *out_temp_num);
+    ////////////////
 
 private:
     bool openConnection();

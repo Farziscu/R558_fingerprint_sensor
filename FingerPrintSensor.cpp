@@ -309,6 +309,7 @@ SENS_StatusTypeDef R558::SENS_UART_Transmit(uint8_t *cmd, uint16_t cmd_len)
 {
     FlushFileBuffers(serialHandle);
 
+#if 0
     DB_LOG("Sending data - cmd_len == %d", cmd_len);
 
     printf("SENS_UART_Transmit : ");
@@ -316,7 +317,7 @@ SENS_StatusTypeDef R558::SENS_UART_Transmit(uint8_t *cmd, uint16_t cmd_len)
         printf(" 0x%X; ", cmd[i]);
 
     printf("\n");
-
+#endif
     if (WriteFile(serialHandle, cmd, cmd_len, NULL, NULL) == false)
     {
         DB_LOG("Error Sending data");
@@ -335,6 +336,7 @@ SENS_StatusTypeDef R558::SENS_UART_Receive(uint8_t *response, uint16_t resp_len)
         return SENS_ERROR;
     }
 
+#if 0
     if (numByteRead == 0)
     {
         err = GetLastError();
@@ -358,6 +360,7 @@ SENS_StatusTypeDef R558::SENS_UART_Receive(uint8_t *response, uint16_t resp_len)
         printf(" 0x%X; ", response[i]);
 
     printf("\n");
+#endif
 
     return SENS_OK;
 }
@@ -766,6 +769,15 @@ SENS_StatusTypeDef R558::R558_GetTemplateNum(uint16_t *out_temp_num)
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 
+static uint32_t getTick()
+{
+    using namespace std::chrono;
+    return static_cast<uint32_t>(duration_cast<milliseconds>(
+                                     steady_clock::now().time_since_epoch())
+                                     .count());
+}
+
+// to be removed
 void R558::SendHello()
 {
     char helloString[] = "Hello World form C++ program!\n\r";
@@ -812,11 +824,4 @@ void R558::GetHello()
         }
     }
 }
-
-static uint32_t getTick()
-{
-    using namespace std::chrono;
-    return static_cast<uint32_t>(duration_cast<milliseconds>(
-                                     steady_clock::now().time_since_epoch())
-                                     .count());
-}
+////////////////
