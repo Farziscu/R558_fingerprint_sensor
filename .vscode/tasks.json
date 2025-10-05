@@ -1,0 +1,80 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Clean exe",
+            "type": "shell",
+            "command": "cmd",
+            "args": [
+                "/c",
+                "del /f /q FingerPrintSensor.exe"
+            ],
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "silent"
+            }
+        },
+        {
+            "label": "Build FingerPrintSensor",
+            "type": "shell",
+            "command": "g++",
+            "args": [
+                "-g",
+                "FingerPrintSensorMAIN.cpp",
+                "FingerPrintSensor.cpp",
+                "-o",
+                "FingerPrintSensor.exe"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "detail": "Compila FingerPrintSensor",
+            "dependsOn": "Clean exe",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        },
+        {
+            "label": "Run FingerPrintSensor",
+            "type": "shell",
+            "command": "cmd",
+            "args": [
+                "/c",
+                "FingerPrintSensor.exe"
+            ],
+            "detail": "Compila ed esegue FingerPrintSensor",
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "dependsOn": "Build FingerPrintSensor",
+            "problemMatcher": []
+        },
+        {
+            "label": "Run Only FingerPrintSensor (No compilation)",
+            "type": "shell",
+            "command": "cmd",
+            "args": [
+                "/c",
+                "FingerPrintSensor.exe"
+            ],
+            "detail": "Esegue FingerPrintSensor (non compila)",
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "dependsOn": [],
+            "problemMatcher": []
+        }
+    ]
+}
