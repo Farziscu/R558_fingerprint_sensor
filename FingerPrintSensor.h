@@ -20,7 +20,7 @@ public:
     R558(uint8_t serPort, int baudrate);
     ~R558();
 
-    bool isSensorConnected() { return (serialHandle != INVALID_HANDLE_VALUE); };
+    SENS_StatusTypeDef isSensorConnected() { return (serialHandle == INVALID_HANDLE_VALUE) ? SENS_ERROR : SENS_OK; };
 
     /* Enroll fingerprint (captures twice, creates model and stores at page_id). */
     SENS_StatusTypeDef R558_Enroll(uint16_t page_id);

@@ -32,7 +32,7 @@ bool R558::openConnection()
     if (serialHandle == INVALID_HANDLE_VALUE)
     {
         // GetLastError....
-        FP_LOG("INVALID_HANDLE_VALUE : errore creating connection!");
+        FP_LOG("INVALID_HANDLE_VALUE : error creating connection!");
         return false;
     }
 

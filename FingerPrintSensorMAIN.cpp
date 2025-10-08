@@ -14,7 +14,7 @@ int main(void)
 
     R558 mySensor(SER_P_COM10, SER_P_BAUDRATE_57600);
 
-    if (!mySensor.isSensorConnected())
+    if (mySensor.isSensorConnected() != SENS_OK)
     {
         return 0;
     }
