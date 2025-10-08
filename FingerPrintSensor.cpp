@@ -24,16 +24,15 @@ static uint32_t getTick();
 
 bool R558::openConnection()
 {
-    std::cout << "Connessione al sensore..." << std::endl;
-    FP_LOG("Connessione al sensore...");
-    FP_LOG("Port: %s", Port_Name[SerialPort]);
-    FP_LOG("baudrate: %d", baudrate);
+    FP_LOG("Connecting sensor...");
+    FP_LOG(" Port       : %s", Port_Name[SerialPort]);
+    FP_LOG(" Baudrate   : %d", baudrate);
     serialHandle = CreateFile(Port_Name[SerialPort], GENERIC_READ | GENERIC_WRITE, 0, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
 
     if (serialHandle == INVALID_HANDLE_VALUE)
     {
         // GetLastError....
-        std::cout << "INVALID_HANDLE_VALUE : errore creating connection!" << std::endl;
+        FP_LOG("INVALID_HANDLE_VALUE : errore creating connection!");
         return false;
     }
 
@@ -101,7 +100,7 @@ R558::R558(uint8_t serPort, int baudrate)
 
 R558::~R558()
 {
-    std::cout << "Closing connection!" << std::endl;
+    FP_LOG("Closing connection!");
     CloseHandle(serialHandle);
 }
 
@@ -309,14 +308,14 @@ SENS_StatusTypeDef R558::SENS_UART_Transmit(uint8_t *cmd, uint16_t cmd_len)
 {
     FlushFileBuffers(serialHandle);
 
-#if 0
+#if LOG_UART_READ_WRITE
     DB_LOG("Sending data - cmd_len == %d", cmd_len);
 
-    printf("SENS_UART_Transmit : ");
+    DB_LOG("SENS_UART_Transmit : ");
     for (int i = 0; i < cmd_len; i++)
-        printf(" 0x%X; ", cmd[i]);
+        DB_LOG(" 0x%X; ", cmd[i]);
 
-    printf("\n");
+    DB_LOG("\n");
 #endif
     if (WriteFile(serialHandle, cmd, cmd_len, NULL, NULL) == false)
     {
@@ -336,7 +335,7 @@ SENS_StatusTypeDef R558::SENS_UART_Receive(uint8_t *response, uint16_t resp_len)
         return SENS_ERROR;
     }
 
-#if 0
+#if LOG_UART_READ_WRITE
     if (numByteRead == 0)
     {
         err = GetLastError();
@@ -355,11 +354,11 @@ SENS_StatusTypeDef R558::SENS_UART_Receive(uint8_t *response, uint16_t resp_len)
 
     DB_LOG("Reveiving data - resp_len == %d", resp_len);
     DB_LOG("Receivin data - numByteRead == %d", numByteRead);
-    printf("SENS_UART_Receive : ");
+    DB_LOG("SENS_UART_Receive : ");
     for (int i = 0; i < numByteRead; i++)
-        printf(" 0x%X; ", response[i]);
+        DB_LOG(" 0x%X; ", response[i]);
 
-    printf("\n");
+    DB_LOG("\n");
 #endif
 
     return SENS_OK;
@@ -434,7 +433,7 @@ SENS_StatusTypeDef R558::R558_SendCommand(uint8_t *cmd, uint16_t cmd_len,
 
     // Get length field (this length already includes checksum)
     // for (int i = 0; i < 9; i++)
-    //    printf("%d - 0x%X; ", i, response[i]);
+    //    DB_LOG("%d - 0x%X; ", i, response[i]);
 
     uint16_t payload_len = ((uint16_t)response[7] << 8) | response[8];
     uint16_t total_len = 9 + payload_len; // header + payload_len (payload includes checksum)
@@ -566,7 +565,7 @@ SENS_StatusTypeDef R558::WaitForFingerPlacement(uint32_t timeout_ms)
         if (send_ret == SENS_OK)
         {
             // for (int i = 0; i < 12; i++)
-            //     printf("%d - 0x%X; ", i, resp[i]);
+            //     DB_LOG("%d - 0x%X; ", i, resp[i]);
 
             // resp[9] = confirmation code
             if (resp[9] == R558_CONFIRM_OK) // 0x00 = finger detected

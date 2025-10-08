@@ -3,17 +3,24 @@
 
 #include "FingerPrintSensor_defines.h"
 
+#define USE_DEBUG_LOG 1 // Debug all the steps
+#define USE_MAIN_LOG 1  // only the user intractable Logs
+
+#define LOG_UART_READ_WRITE 0 // Prints in/out buffer over serial
+
 class R558
 {
 private:
     uint8_t SerialPort; // es SER_P_COMx
     int baudrate;
-    HANDLE serialHandle;
+    HANDLE serialHandle = INVALID_HANDLE_VALUE;
 
 public:
     R558();
     R558(uint8_t serPort, int baudrate);
     ~R558();
+
+    bool isSensorConnected() { return (serialHandle != INVALID_HANDLE_VALUE); };
 
     /* Enroll fingerprint (captures twice, creates model and stores at page_id). */
     SENS_StatusTypeDef R558_Enroll(uint16_t page_id);
@@ -55,9 +62,6 @@ private:
     SENS_StatusTypeDef SENS_UART_Transmit(uint8_t *cmd, uint16_t cmd_len);
     SENS_StatusTypeDef SENS_UART_Receive(uint8_t *response, uint16_t resp_len);
 };
-
-#define USE_DEBUG_LOG 1 // Debug all the steps
-#define USE_MAIN_LOG 1  // only the user intractable Logs
 
 /* Logging: override FP_LOG before include to route logs elsewhere */
 #if USE_MAIN_LOG
