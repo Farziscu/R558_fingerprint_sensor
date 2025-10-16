@@ -9,11 +9,40 @@
 #define R558_INS_EMPTY 0x0D     /* Empty library */
 #define R558_INS_VERIFYPWD 0x13 /* Verify password */
 #define R558_INS_TEMPNUM 0x1D   /* Template Num */
+#define R558_LED_CONTROL 0x3C   /* LED Control */
 
 /* Confirmation codes (common) */
 #define R558_CONFIRM_OK 0x00
 #define R558_CONFIRM_NOFINGER 0x02
 #define R558_CONFIRM_NOMATCH 0x09
+
+/* Function number/code */
+#define R558_FC_NORMAL_BREATHING 0X01 // normal breathing light,
+#define R558_FC_FLASH_LIGHT 0X02      // flashing light,
+#define R558_FC_NORMAL_ON_LIGHT 0X03  // normally on light,
+#define R558_FC_NORMAL_OFF_LIGHT 0X04 // normally off light,
+#define R558_FC_GRADUALLY_ON 0X05     // Gradually on,
+#define R558_FC_GRADUALLY_OFF 0X06    // Gradually off
+
+/* Starting color */
+#define R558_START_COLOR_BLUE_ON 0x01   // blue light on,
+#define R558_START_COLOR_GREEN_ON 0x02  // green light on,
+#define R558_START_COLOR_CYAN_ON 0x03   // cyan light on,
+#define R558_START_COLOR_RED_ON 0x04    // red light on,
+#define R558_START_COLOR_PURPLE_ON 0x05 // purple light on,
+#define R558_START_COLOR_YELLOW_ON 0x06 // yellow light on,
+#define R558_START_COLOR_WHITE_ON 0x07  // white light on,
+#define R558_START_COLOR_ALL_OFF 0x00   // all off.
+
+/* Ending color */
+#define R558_END_COLOR_BLUE_ON 0x01   // blue light on,
+#define R558_END_COLOR_GREEN_ON 0x02  // green light on,
+#define R558_END_COLOR_CYAN_ON 0x03   // cyan light on,
+#define R558_END_COLOR_RED_ON 0x04    // red light on,
+#define R558_END_COLOR_PURPLE_ON 0x05 // purple light on,
+#define R558_END_COLOR_YELLOW_ON 0x06 // yellow light on,
+#define R558_END_COLOR_WHITE_ON 0x07  // white light on,
+#define R558_END_COLOR_ALL_OFF 0x00   // all off.
 
 /* Baudrate defines */
 #define SER_P_BAUDRATE_9600 9600

@@ -32,7 +32,26 @@ int main(void)
 
 #endif
 
-#if 0
+#if 1 // LED CONTROL
+
+    if (mySensor.R558_ManageLED() != SENS_OK)
+    {
+        FP_LOG("LED Control failed!");
+    }
+    else
+    {
+        FP_LOG("LED Control OK!");
+    }
+
+    Sleep(2000);
+
+#endif
+
+#if 0 // enroll
+    mySensor.R558_Enroll(1);
+#endif
+
+#if 0 // get template number
     uint16_t temp_numb = 1000;
 
     FP_LOG("Getting Template numb....");
@@ -45,10 +64,6 @@ int main(void)
     {
         FP_LOG("Template numb = %d", temp_numb);
     }
-#endif
-
-#if 0 // enroll
-    mySensor.R558_Enroll(1);
 #endif
 
 #if 0 // verify finger

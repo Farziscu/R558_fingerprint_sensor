@@ -36,6 +36,9 @@ bool R558::openConnection()
         return false;
     }
 
+    // Clean input buffer
+    PurgeComm(serialHandle, PURGE_RXCLEAR); // to purge TX buffer use: | PURGE_TXCLEAR);
+
     // Do some basic settings
     DCB serialParams = {0};
     serialParams.DCBlength = sizeof(serialParams);
@@ -756,6 +759,35 @@ SENS_StatusTypeDef R558::R558_GetTemplateNum(uint16_t *out_temp_num)
         else
         {
             DB_LOG("Read template number failed!");
+            return SENS_ERROR;
+        }
+    }
+    return SENS_ERROR;
+}
+
+SENS_StatusTypeDef R558::R558_ManageLED()
+{
+    uint8_t cmd[16];
+    uint8_t params[4] = {
+        R558_FC_NORMAL_BREATHING, // Function number
+        R558_START_COLOR_CYAN_ON, // Starting color
+        R558_END_COLOR_BLUE_ON,   // Ending color
+        3                         // Cycle times
+    };
+    uint16_t cmd_len = R558_BuildCommand(cmd, R558_LED_CONTROL, params, sizeof(params));
+
+    uint8_t resp[32] = {0};
+    DB_LOG("Setting LED control...");
+    if (R558_SendCommand(cmd, cmd_len, resp, sizeof(resp)) == SENS_OK)
+    {
+        if (resp[9] == R558_CONFIRM_OK)
+        {
+            DB_LOG("LED control set!");
+            return SENS_OK;
+        }
+        else
+        {
+            DB_LOG("LED control setting failed! Confirmation code: 0x%X", resp[9]);
             return SENS_ERROR;
         }
     }

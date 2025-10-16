@@ -39,6 +39,8 @@ public:
 
     SENS_StatusTypeDef R558_GetTemplateNum(uint16_t *out_temp_num);
 
+    SENS_StatusTypeDef R558_ManageLED();
+
     // to be removed
     void SendHello();
     void GetHello();
