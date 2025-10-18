@@ -14,6 +14,7 @@ private:
     uint8_t SerialPort; // es SER_P_COMx
     int baudrate;
     HANDLE serialHandle = INVALID_HANDLE_VALUE;
+    uint8_t SystemParameters[R558_SYSTEM_PARAM_SIZE]; // System parameters list    //es: = {0x00, 0x04, 0x00, 0x00, 0x00, 0x64, 0x00, 0x03, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x02, 0x00, 0x06};
 
 public:
     R558();
@@ -40,6 +41,11 @@ public:
     SENS_StatusTypeDef R558_GetTemplateNum(uint16_t *out_temp_num);
 
     SENS_StatusTypeDef R558_ManageLED();
+
+    // renderlo privato?
+    SENS_StatusTypeDef R558_ReadSystemParameters(void);
+
+    SENS_StatusTypeDef R558_ShowSystemParameters(void);
 
     // to be removed
     void SendHello();

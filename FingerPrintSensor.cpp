@@ -1,8 +1,11 @@
 
 #include <iostream>
-#include <string.h>
-#include <chrono>
+// #include <string.h>
+#include <string>
+#include <sstream>
+#include <iomanip>
 
+#include <chrono>
 #include <windows.h>
 
 #include "FingerPrintSensor.h"
@@ -37,7 +40,7 @@ bool R558::openConnection()
     }
 
     // Clean input buffer
-    PurgeComm(serialHandle, PURGE_RXCLEAR); // to purge TX buffer use: | PURGE_TXCLEAR);
+    PurgeComm(serialHandle, PURGE_RXCLEAR | PURGE_TXCLEAR); // to purge TX buffer use: | PURGE_TXCLEAR);
 
     // Do some basic settings
     DCB serialParams = {0};
@@ -89,6 +92,7 @@ bool R558::openConnection()
 
 R558::R558()
 {
+    memset(SystemParameters, 0x00, sizeof(SystemParameters));
     SerialPort = SER_P_COM4;
     baudrate = SER_P_BAUDRATE_57600;
     openConnection();
@@ -96,6 +100,7 @@ R558::R558()
 
 R558::R558(uint8_t serPort, int baudrate)
 {
+    memset(SystemParameters, 0x00, sizeof(SystemParameters));
     SerialPort = serPort;
     this->baudrate = baudrate;
     openConnection();
@@ -113,65 +118,42 @@ R558::~R558()
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-/* Enroll fingerprint (captures twice, creates model and stores at page_id). */
+/* Enroll fingerprint (captures for times, creates model and stores at page_id). */
 SENS_StatusTypeDef R558::R558_Enroll(uint16_t page_id)
 {
     FP_LOG("\r\n=== ENROLL FINGERPRINT ===");
     FP_LOG("Target ID = %d", page_id);
 
-    // 1st capture
-    FP_LOG("Place your finger...");
-    if (WaitForFingerPlacement(20000) != SENS_OK)
+    for (int idx = 1; idx < 5; idx++)
     {
-        return SENS_TIMEOUT;
-    }
+        // capture number idx
+        FP_LOG("Place your finger...");
+        if (WaitForFingerPlacement(20000) != SENS_OK)
+        {
+            return SENS_TIMEOUT;
+        }
 
-    FP_LOG("Capturing finger...");
-    while (R558_CaptureFinger() != SENS_OK)
-    {
-        Sleep(200); // wait and retry
-    }
+        FP_LOG("Capturing finger...");
+        while (R558_CaptureFinger() != SENS_OK)
+        {
+            Sleep(200); // wait and retry
+        }
 
-    if (R558_Image2Tz(1) != SENS_OK)
-    {
-        FP_LOG("Failed to convert first image");
-        return SENS_ERROR;
-    }
-    FP_LOG("First image captured and converted");
+        if (R558_Image2Tz(idx) != SENS_OK)
+        {
+            FP_LOG("Failed to convert first image");
+            return SENS_ERROR;
+        }
+        FP_LOG("First image captured and converted");
 
-    // Wait until finger is removed (with timeout)
-    FP_LOG("Please remove your finger...");
-    if (WaitForFingerRemoval(10000) != SENS_OK)
-    {
-        return SENS_TIMEOUT;
-    }
+        // Wait until finger is removed (with timeout)
+        FP_LOG("Please remove your finger...");
+        if (WaitForFingerRemoval(10000) != SENS_OK)
+        {
+            return SENS_TIMEOUT;
+        }
 
-    FP_LOG("\n\n");
-
-    // 2nd capture
-    FP_LOG("Place the same finger again...");
-    if (WaitForFingerPlacement(20000) != SENS_OK)
-    {
-        return SENS_TIMEOUT;
-    }
-
-    FP_LOG("Capturing finger again...");
-    while (R558_CaptureFinger() != SENS_OK)
-    {
-        Sleep(200); // wait and retry
-    }
-
-    if (R558_Image2Tz(2) != SENS_OK)
-    {
-        FP_LOG("Failed to convert second image");
-        return SENS_ERROR;
-    }
-    FP_LOG("Second image captured and converted");
-
-    FP_LOG("Please remove your finger...");
-    if (WaitForFingerRemoval(10000) != SENS_OK)
-    {
-        return SENS_TIMEOUT;
+        FP_LOG("\n\n");
     }
 
     FP_LOG("\n\n Acquisition completed.");
@@ -237,7 +219,7 @@ SENS_StatusTypeDef R558::R558_Verify(uint16_t *out_page_id, uint16_t *out_score)
     // Search entire library; change range if you have different capacity
     uint16_t page_id = 0, score = 0;
     FP_LOG("Searching Database...");
-    if (R558_SearchDatabase(&page_id, &score, 0x0000, 0x03E8) == SENS_OK)
+    if (R558_SearchDatabase(&page_id, &score, 0x0000, 0x0064) == SENS_OK)
     {
         FP_LOG("Match found: ID=%d Score=%d", page_id, score);
         if (out_page_id)
@@ -312,13 +294,20 @@ SENS_StatusTypeDef R558::SENS_UART_Transmit(uint8_t *cmd, uint16_t cmd_len)
     FlushFileBuffers(serialHandle);
 
 #if LOG_UART_READ_WRITE
-    DB_LOG("Sending data - cmd_len == %d", cmd_len);
+    using namespace std;
+    {
+        std::stringstream ss;
+        DB_LOG("Sending data - cmd_len == %d", cmd_len);
 
-    DB_LOG("SENS_UART_Transmit : ");
-    for (int i = 0; i < cmd_len; i++)
-        DB_LOG(" 0x%X; ", cmd[i]);
+        string s("SENS_UART_Transmit : ");
+        for (int i = 0; i < cmd_len; i++)
+            ss << " 0x" << std::hex << std::uppercase << std::setw(2) << std::setfill('0') << static_cast<int>(cmd[i]);
 
-    DB_LOG("\n");
+        s.append(" " + ss.str());
+
+        DB_LOG("%s", s.c_str());
+    } // namespace std
+
 #endif
     if (WriteFile(serialHandle, cmd, cmd_len, NULL, NULL) == false)
     {
@@ -357,11 +346,18 @@ SENS_StatusTypeDef R558::SENS_UART_Receive(uint8_t *response, uint16_t resp_len)
 
     DB_LOG("Reveiving data - resp_len == %d", resp_len);
     DB_LOG("Receivin data - numByteRead == %d", numByteRead);
-    DB_LOG("SENS_UART_Receive : ");
-    for (int i = 0; i < numByteRead; i++)
-        DB_LOG(" 0x%X; ", response[i]);
+    using namespace std;
+    {
+        std::stringstream ss;
+        string s("SENS_UART_Receive : ");
+        for (int i = 0; i < numByteRead; i++)
+            ss << " 0x" << std::hex << std::uppercase << std::setw(2) << std::setfill('0') << static_cast<int>(response[i]);
 
-    DB_LOG("\n");
+        s.append(" " + ss.str());
+
+        DB_LOG("%s", s.c_str());
+    }
+
 #endif
 
     return SENS_OK;
@@ -523,7 +519,7 @@ SENS_StatusTypeDef R558::WaitForFingerRemoval(uint32_t timeout_ms)
     {
         uint8_t resp[12];
         uint8_t cmd[16];
-        uint16_t cmd_len = R558_BuildCommand(cmd, R558_INS_GENIMG, NULL, 0);
+        uint16_t cmd_len = R558_BuildCommand(cmd, R558_INS_GETIMG, NULL, 0);
 
         // Send capture finger command, do not spam logs
         R558_SendCommand(cmd, cmd_len, resp, sizeof(resp));
@@ -560,7 +556,7 @@ SENS_StatusTypeDef R558::WaitForFingerPlacement(uint32_t timeout_ms)
     {
         uint8_t resp[12];
         uint8_t cmd[16];
-        uint16_t cmd_len = R558_BuildCommand(cmd, R558_INS_GENIMG, NULL, 0);
+        uint16_t cmd_len = R558_BuildCommand(cmd, R558_INS_GETIMG, NULL, 0);
 
         // Send capture finger command
         send_ret = R558_SendCommand(cmd, cmd_len, resp, sizeof(resp));
@@ -594,7 +590,7 @@ SENS_StatusTypeDef R558::WaitForFingerPlacement(uint32_t timeout_ms)
 SENS_StatusTypeDef R558::R558_CaptureFinger(void)
 {
     uint8_t cmd[16];
-    uint16_t cmd_len = R558_BuildCommand(cmd, R558_INS_GENIMG, NULL, 0);
+    uint16_t cmd_len = R558_BuildCommand(cmd, R558_INS_GETIMG, NULL, 0);
 
     uint8_t resp[32] = {0};
     DB_LOG("Capturing finger...");
@@ -617,9 +613,9 @@ SENS_StatusTypeDef R558::R558_CaptureFinger(void)
 // Img2Tz - Convert image to characteristic file (buffer 1 or 2)
 SENS_StatusTypeDef R558::R558_Image2Tz(uint8_t buffer_id)
 {
-    if (buffer_id != 1 && buffer_id != 2)
+    if (buffer_id < 1 || buffer_id > 4)
     {
-        DB_LOG("Invalid buffer id %d (must be 1 or 2)", buffer_id);
+        DB_LOG("Invalid buffer id %d (must be from 1 to 4)", buffer_id);
         return SENS_ERROR;
     }
     uint8_t params[1] = {buffer_id};
@@ -774,7 +770,7 @@ SENS_StatusTypeDef R558::R558_ManageLED()
         R558_END_COLOR_BLUE_ON,   // Ending color
         3                         // Cycle times
     };
-    uint16_t cmd_len = R558_BuildCommand(cmd, R558_LED_CONTROL, params, sizeof(params));
+    uint16_t cmd_len = R558_BuildCommand(cmd, R558_INS_LED_CONTROL, params, sizeof(params));
 
     uint8_t resp[32] = {0};
     DB_LOG("Setting LED control...");
@@ -792,6 +788,59 @@ SENS_StatusTypeDef R558::R558_ManageLED()
         }
     }
     return SENS_ERROR;
+}
+
+SENS_StatusTypeDef R558::R558_ReadSystemParameters(void)
+{
+    uint8_t cmd[16];
+    uint16_t cmd_len = R558_BuildCommand(cmd, R558_INS_READ_SYS_PARA, NULL, 0);
+
+    uint8_t resp[32] = {0};
+    DB_LOG("Reading System parameters...");
+    if (R558_SendCommand(cmd, cmd_len, resp, sizeof(resp)) == SENS_OK)
+    {
+        if (resp[9] == R558_CONFIRM_OK)
+        {
+            DB_LOG("Read complete!");
+            memcpy(&SystemParameters[0], &resp[10], 16);
+            return SENS_OK;
+        }
+        else
+        {
+            DB_LOG("Reading error when receiving package");
+            return SENS_ERROR;
+        }
+    }
+    return SENS_ERROR;
+}
+
+SENS_StatusTypeDef R558::R558_ShowSystemParameters(void)
+{
+    // to be review....
+
+    // to call R558_ReadSystemParameters if it is private
+
+    SystemParam_t params;
+    // memcpy(&params, SystemParameters, sizeof(SystemParameters));
+
+    params.EnrollTimes = TO_UINT16_BE(&SystemParameters[0]);
+    params.FP_Template_Size = TO_UINT16_BE(&SystemParameters[2]);
+    params.FP_Database_Size = TO_UINT16_BE(&SystemParameters[4]);
+    params.ScoreLevel = TO_UINT16_BE(&SystemParameters[6]);
+    params.DeviceAddress = TO_UINT32_BE(&SystemParameters[8]);
+    params.DataPacketSize = TO_UINT16_BE(&SystemParameters[12]);
+    params.BaudSettings = TO_UINT16_BE(&SystemParameters[14]);
+
+    std::cout << SystemParametersName[0] << params.EnrollTimes << std::endl;
+    std::cout << SystemParametersName[1] << params.FP_Template_Size << std::endl;
+    std::cout << SystemParametersName[2] << params.FP_Database_Size << std::endl;
+    std::cout << SystemParametersName[3] << params.ScoreLevel << std::endl;
+    std::cout << SystemParametersName[4] << " 0x" << std::hex << std::uppercase << std::setw(2) << std::setfill('0') << params.DeviceAddress << std::endl;
+    std::cout << std::dec;
+    std::cout << SystemParametersName[5] << params.DataPacketSize << std::endl;
+    std::cout << SystemParametersName[6] << params.BaudSettings << std::endl;
+
+    return SENS_OK;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////

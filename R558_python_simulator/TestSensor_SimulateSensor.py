@@ -136,8 +136,8 @@ try:
                     print("R558_INS_VERIFYPWD received!")
                     verify_pwd()
 
-                case 0x01:  #R558_INS_GENIMG
-                    print("R558_INS_GENIMG received! ??????????Metti o Rimuovi il dito????????????")
+                case 0x01:  #R558_INS_GETIMG
+                    print("R558_INS_GETIMG received! ??????????Metti o Rimuovi il dito????????????")
                     wait_finger_presence()
 
                 case 0x02:  #R558_INS_IMG2TZ
