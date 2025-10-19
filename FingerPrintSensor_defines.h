@@ -1,16 +1,20 @@
 
 /* Instruction codes (used by implementation) */
-#define R558_INS_GETIMG 0x01        /* GetImg: capture image */
-#define R558_INS_IMG2TZ 0x02        /* Img2Tz: image -> char (buffer) */
-#define R558_INS_REGMODEL 0x05      /* RegModel: merge buffers -> template */
-#define R558_INS_STORE 0x06         /* Store template to flash */
-#define R558_INS_SEARCH 0x04        /* Search database */
-#define R558_INS_DELETE 0x0C        /* Delete templates */
-#define R558_INS_EMPTY 0x0D         /* Empty library */
-#define R558_INS_VERIFYPWD 0x13     /* Verify password */
-#define R558_INS_TEMPNUM 0x1D       /* Template Num */
-#define R558_INS_LED_CONTROL 0x3C   /* LED Control */
-#define R558_INS_READ_SYS_PARA 0x0F /* Read system Parameters */
+#define R558_INS_GETIMG 0x01           /* GetImg: capture image */
+#define R558_INS_IMG2TZ 0x02           /* Img2Tz: image -> char (buffer) */
+#define R558_INS_PRECISE_MATCHING 0x03 /* To carry out precise matching of two finger templates Match */
+#define R558_INS_SEARCH 0x04           /* Search database */
+#define R558_INS_REGMODEL 0x05         /* RegModel: merge buffers -> template */
+#define R558_INS_STORE 0x06            /* Store template to flash */
+#define R558_INS_LOAD_CHAR 0x07        /* Read template from Flash library */
+#define R558_INS_DELETE 0x0C           /* Delete templates */
+#define R558_INS_EMPTY 0x0D            /* Empty library */
+#define R558_INS_VERIFYPWD 0x13        /* Verify password */
+#define R558_INS_READ_INF_PAGE 0x16    /* Read Information Page */
+#define R558_INS_TEMPNUM 0x1D          /* Template Num */
+#define R558_INS_SLEEP 0x33            /* Sleep */
+#define R558_INS_LED_CONTROL 0x3C      /* LED Control */
+#define R558_INS_READ_SYS_PARA 0x0F    /* Read system Parameters */
 
 /* LED Control params */
 /* Confirmation codes (common) */

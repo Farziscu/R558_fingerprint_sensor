@@ -6,7 +6,7 @@
 #define USE_DEBUG_LOG 1 // Debug all the steps
 #define USE_MAIN_LOG 1  // only the user intractable Logs
 
-#define LOG_UART_READ_WRITE 0 // Prints in/out buffer over serial
+#define LOG_UART_READ_WRITE 1 // Prints in/out buffer over serial
 
 class R558
 {
@@ -29,6 +29,9 @@ public:
     /* Verify fingerprint */
     SENS_StatusTypeDef R558_Verify(uint16_t *out_page_id, uint16_t *out_score);
 
+    /* Check accuracy */
+    SENS_StatusTypeDef R558_CheckAccuracy(uint16_t *accuracyVal, uint16_t page_id);
+
     /* Verify device password. Pass the 32-bit password (module default is often 0x00000000 or 0x00000001). */
     SENS_StatusTypeDef R558_VerifyPassword(uint32_t password);
 
@@ -42,10 +45,14 @@ public:
 
     SENS_StatusTypeDef R558_ManageLED();
 
+    SENS_StatusTypeDef R558_Sleep();
+
     // renderlo privato?
     SENS_StatusTypeDef R558_ReadSystemParameters(void);
 
     SENS_StatusTypeDef R558_ShowSystemParameters(void);
+
+    SENS_StatusTypeDef R558_ReadInformationPage(uint8_t *infOut);
 
     // to be removed
     void SendHello();

@@ -235,10 +235,90 @@ SENS_StatusTypeDef R558::R558_Verify(uint16_t *out_page_id, uint16_t *out_score)
 
     FP_LOG("Please remove your finger...");
 
-    //       if (WaitForFingerRemoval(10000) != SENS_OK) {
-    //           status = SENS_TIMEOUT;
-    //       }
+    // if (WaitForFingerRemoval(10000) != SENS_OK)
+    //{
+    //     status = SENS_TIMEOUT;
+    // }
     return status;
+}
+
+/* Check accuracy */
+SENS_StatusTypeDef R558::R558_CheckAccuracy(uint16_t *accuracyVal, uint16_t page_id)
+{
+    SENS_StatusTypeDef ret = SENS_ERROR;
+    uint8_t cmd[16];
+    uint16_t cmd_len = 0;
+    uint8_t resp[32] = {0};
+
+    uint8_t params[3]; // = {BufferID, PageID (high), PageID(low)}
+    uint16_t out_score;
+
+    params[0] = 2; // BufferID
+    params[1] = (page_id >> 8) & 0XFF;
+    params[2] = page_id & 0XFF;
+
+    cmd_len = R558_BuildCommand(cmd, R558_INS_LOAD_CHAR, params, 3);
+
+    memset(resp, 0x00, sizeof(resp));
+    DB_LOG("Reading template from flash...");
+    if (R558_SendCommand(cmd, cmd_len, resp, sizeof(resp)) == SENS_OK)
+    {
+        if (resp[9] == R558_CONFIRM_OK)
+        {
+            DB_LOG("Reading template from flash OK");
+            ret = SENS_OK;
+        }
+        else
+        {
+            DB_LOG("Reading template from flash failed (code=0x%02X)", resp[9]);
+            ret = SENS_ERROR;
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////
+
+    FP_LOG("Place your finger...");
+    if (WaitForFingerPlacement(20000) != SENS_OK)
+    {
+        return SENS_TIMEOUT;
+    }
+
+    FP_LOG("Capturing finger...");
+    while (R558_CaptureFinger() != SENS_OK)
+    {
+        Sleep(200); // wait and retry
+    }
+
+    if (R558_Image2Tz(1) != SENS_OK)
+    {
+        return SENS_ERROR;
+    }
+
+    ///////////////////////////////////////////////////////////////
+
+    if (ret == SENS_OK)
+    {
+        cmd_len = R558_BuildCommand(cmd, R558_INS_PRECISE_MATCHING, NULL, 0);
+        memset(resp, 0x00, sizeof(resp));
+        DB_LOG("Send command for precise matching...");
+        if (R558_SendCommand(cmd, cmd_len, resp, sizeof(resp)) == SENS_OK)
+        {
+            if (resp[9] == R558_CONFIRM_OK)
+            {
+                DB_LOG("Precise matching command OK! Score == %d - %d", resp[10], resp[11]);
+                //*accuracyVal = ((uint16_t)resp[10] << 8) | resp[11];
+                *accuracyVal = ((uint16_t *)&resp)[5];
+                ret = SENS_OK;
+            }
+            else
+            {
+                DB_LOG("Send command for precise matching failed (code=0x%02X)", resp[9]);
+                ret = SENS_ERROR;
+            }
+        }
+    }
+
+    return ret;
 }
 
 /* Verify device password. Pass the 32-bit password (module default is often 0x00000000 or 0x00000001). */
@@ -453,6 +533,9 @@ SENS_StatusTypeDef R558::R558_SendCommand(uint8_t *cmd, uint16_t cmd_len,
             DB_LOG("UART receive failed (payload)");
             return status;
         }
+        // Get length field (this length already includes checksum)
+        // for (int i = 9; i < 9 + payload_len; i++)
+        //    DB_LOG("%d - 0x%X; ", i, response[i]);
     }
 
     return SENS_OK;
@@ -790,6 +873,30 @@ SENS_StatusTypeDef R558::R558_ManageLED()
     return SENS_ERROR;
 }
 
+SENS_StatusTypeDef R558::R558_Sleep()
+{
+    uint8_t cmd[16];
+    uint8_t resp[32] = {0};
+
+    uint16_t cmd_len = R558_BuildCommand(cmd, R558_INS_SLEEP, NULL, 0);
+
+    DB_LOG("Sending sleep command...");
+    if (R558_SendCommand(cmd, cmd_len, resp, sizeof(resp)) == SENS_OK)
+    {
+        if (resp[9] == R558_CONFIRM_OK)
+        {
+            DB_LOG("Sending sleep command Confirmed!");
+            return SENS_OK;
+        }
+        else
+        {
+            DB_LOG("Sending sleep command failed! Confirmation code: 0x%X", resp[9]);
+            return SENS_ERROR;
+        }
+    }
+    return SENS_ERROR;
+}
+
 SENS_StatusTypeDef R558::R558_ReadSystemParameters(void)
 {
     uint8_t cmd[16];
@@ -841,6 +948,66 @@ SENS_StatusTypeDef R558::R558_ShowSystemParameters(void)
     std::cout << SystemParametersName[6] << params.BaudSettings << std::endl;
 
     return SENS_OK;
+}
+
+SENS_StatusTypeDef R558::R558_ReadInformationPage(uint8_t *infOut)
+{
+    uint8_t cmd[16];
+    uint16_t cmd_len = R558_BuildCommand(cmd, R558_INS_READ_INF_PAGE, NULL, 0);
+
+    uint8_t resp[32] = {0};
+    DB_LOG("Reading information page...");
+    if (R558_SendCommand(cmd, cmd_len, resp, sizeof(resp)) == SENS_OK)
+    {
+        if (resp[9] == R558_CONFIRM_OK)
+        {
+            DB_LOG("Reading information page OK! Receiving next data...");
+            // Receive header (9 bytes): EF01 + Addr(4) + PID + LEN_H + LEN_L
+
+            uint8_t packageID = 0x00;
+            uint8_t *infPtr = infOut;
+            do
+            {
+
+                if (SENS_UART_Receive(infPtr, 9) != SENS_OK)
+                {
+                    DB_LOG("UART receive failed (header)");
+                    return SENS_ERROR;
+                }
+
+                packageID = infPtr[6];
+
+                uint16_t payload_len = ((uint16_t)infPtr[7] << 8) | infPtr[8];
+                uint16_t total_len = 9 + payload_len; // header + payload_len (payload includes checksum)
+
+                if (total_len > 512)
+                {
+                    DB_LOG("Response too large (%d bytes, buffer max %d)", total_len, 512);
+                    return SENS_ERROR;
+                }
+
+                // Read rest of packet (payload_len bytes)
+                if (payload_len > 0)
+                {
+                    if (SENS_UART_Receive(&infPtr[9], payload_len) != SENS_OK)
+                    {
+                        DB_LOG("UART receive failed (payload)");
+                        return SENS_ERROR;
+                    }
+                }
+
+                infPtr += total_len;
+            } while (packageID != 0x08);
+
+            return SENS_OK;
+        }
+        else
+        {
+            DB_LOG("Reading information page failed!");
+            return SENS_ERROR;
+        }
+    }
+    return SENS_ERROR;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
