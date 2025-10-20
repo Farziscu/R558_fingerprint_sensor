@@ -4,9 +4,25 @@
 #include <windows.h>
 #include <sstream>
 #include <iomanip>
-// #include <string>
 
 #include "FingerPrintSensor.h"
+
+#define MAIN_LOG(fmt, ...) printf("[MAIN] " fmt "\n", ##__VA_ARGS__)
+
+void printBuffer(uint8_t *buf, uint16_t bufLen)
+{
+    using namespace std;
+    {
+        std::stringstream ss;
+        string s("buffer : ");
+        for (int i = 0; i < bufLen; i++)
+            ss << " 0x" << std::hex << std::uppercase << std::setw(2) << std::setfill('0') << static_cast<int>(buf[i]);
+
+        s.append(" " + ss.str());
+
+        MAIN_LOG("%s", s.c_str());
+    } // namespace std
+}
 
 #if 0
 using namespace std;
@@ -57,7 +73,7 @@ int main(void)
     std::cout << std::endl;
     R558 mySensor(SER_P_COM10, SER_P_BAUDRATE_57600);
 
-    if (mySensor.isSensorConnected() != SENS_OK)
+    if (mySensor.R558_isConnected() != SENS_OK)
     {
         return 0;
     }
@@ -67,31 +83,38 @@ int main(void)
     {
         std::cout << "   Inserisci un carattere: " << std::endl;
         std::cout << "      P-Check password;" << std::endl;
+        std::cout << "      V-Verify; " << std::endl;
         std::cout << "      Y-sYstem parameters;" << std::endl;
+        std::cout << "      R-Read information Page;" << std::endl;
+        std::cout << "      T-Read Template number; " << std::endl;
+        std::cout << std::endl;
         std::cout << "      S-Sleep;" << std::endl;
         std::cout << "      L-LED; " << std::endl;
         std::cout << "      E-Enroll; " << std::endl;
-        std::cout << "      V-Verify; " << std::endl;
         std::cout << "      A-Accurate Match; " << std::endl;
+        std::cout << "      U-Upload Image to Upper Computer; " << std::endl;
+        std::cout << std::endl;
+        std::cout << "      D-Delete template; " << std::endl;
+        std::cout << "      F-delete All fingerprints; " << std::endl;
         std::cout << "      X-Exit" << std::endl;
         std::cin >> choice;
 
-        FP_LOG("==================================================================");
+        MAIN_LOG("==================================================================");
 
         switch (choice)
         {
         case 'P': // verify password
         case 'p':
         {
-            FP_LOG("Verify password test");
+            MAIN_LOG("Verify password test");
 
             if (mySensor.R558_VerifyPassword(0x00000000) != SENS_OK)
             {
-                FP_LOG("Verify password failed!");
+                MAIN_LOG("Verify password failed!");
             }
             else
             {
-                FP_LOG("Verify password OK!");
+                MAIN_LOG("Verify password OK!");
             }
             break;
         }
@@ -99,33 +122,53 @@ int main(void)
         case 'Y': // System parameters
         case 'y':
         {
-            FP_LOG("Read System parameters");
+            MAIN_LOG("Read System parameters");
 
             if (mySensor.R558_ReadSystemParameters() != SENS_OK)
             {
-                FP_LOG("Read System parameters failed!");
+                MAIN_LOG("Read System parameters failed!");
             }
             else
             {
-                FP_LOG("Read System parameters OK!");
+                MAIN_LOG("Read System parameters OK!");
             }
 
             mySensor.R558_ShowSystemParameters();
             break;
         }
 
-        case 'L': // LED CONTROL
-        case 'l':
+        case 'R': // Read information Page
+        case 'r':
         {
-            FP_LOG("LED Control test");
 
-            if (mySensor.R558_ManageLED() != SENS_OK)
+            MAIN_LOG("Read information page test");
+            uint8_t inf[1024];
+            uint16_t retSize = 0;
+
+            if (mySensor.R558_ReadInformationPage(inf, sizeof(inf), &retSize) != SENS_OK)
             {
-                FP_LOG("LED Control failed!");
+                MAIN_LOG("Read information page test failed!");
             }
             else
             {
-                FP_LOG("LED Control OK!");
+                MAIN_LOG("Read information page test OK!");
+                printBuffer(inf, retSize);
+            }
+            break;
+        }
+
+        case 'L': // LED CONTROL
+        case 'l':
+        {
+            MAIN_LOG("LED Control test");
+
+            if (mySensor.R558_ManageLED() != SENS_OK)
+            {
+                MAIN_LOG("LED Control failed!");
+            }
+            else
+            {
+                MAIN_LOG("LED Control OK!");
             }
 
             break;
@@ -134,20 +177,24 @@ int main(void)
         case 'V': // verify finger
         case 'v':
         {
-            FP_LOG("Verify finger test");
+            MAIN_LOG("Verify finger test");
 
             uint16_t out_page_id;
             uint16_t out_score;
-
-            if (mySensor.R558_Verify(&out_page_id, &out_score) != SENS_OK)
+            SENS_StatusTypeDef status = mySensor.R558_Verify(&out_page_id, &out_score);
+            if (status == SENS_OK)
             {
-                std::cout << "Error verifying!" << std::endl;
+                MAIN_LOG("Verify finger test OK!");
+                MAIN_LOG("out_page_id: %d ", out_page_id);
+                MAIN_LOG("out_score:   %d ", out_score);
+            }
+            else if (status == SENS_NO_MATCH)
+            {
+                MAIN_LOG("No match for this finger!");
             }
             else
             {
-                std::cout << "Verification OK!" << std::endl;
-                std::cout << "out_page_id:  " << out_page_id << std::endl;
-                std::cout << "out_score:    " << out_score << std::endl;
+                MAIN_LOG("Verify finger test failed!");
             }
             break;
         }
@@ -155,22 +202,22 @@ int main(void)
         case 'A': // Accurate Match
         case 'a':
         {
-            FP_LOG("Accurate Match test");
+            MAIN_LOG("Accurate Match test");
 
             uint16_t out_page_id;
             uint16_t out_score;
 
             if (mySensor.R558_Verify(&out_page_id, &out_score) != SENS_OK)
             {
-                std::cout << "Error verifying!" << std::endl;
+                MAIN_LOG("Accurate Match test failed!");
             }
             else
             {
-                std::cout << "Verification OK!" << std::endl;
-                std::cout << "out_page_id:  " << out_page_id << std::endl;
-                std::cout << "out_score:    " << out_score << std::endl;
+                MAIN_LOG("Accurate Match test OK!");
+                MAIN_LOG("out_page_id: %d ", out_page_id);
+                MAIN_LOG("out_score:   %d ", out_score);
 
-                FP_LOG("Next step...");
+                MAIN_LOG("Next step...");
                 out_score = 999;
 
                 if (mySensor.R558_CheckAccuracy(&out_score, out_page_id) != SENS_OK)
@@ -189,23 +236,23 @@ int main(void)
         case 'S': // Sleep test
         case 's':
         {
-            FP_LOG("Sleep test test");
+            MAIN_LOG("Sleep test");
 
             if (mySensor.R558_Sleep() != SENS_OK)
             {
-                std::cout << "Sleep test FAILED!" << std::endl;
+                MAIN_LOG("Sleep test failed!");
             }
             else
             {
-                std::cout << "Sleep test OK!" << std::endl;
+                MAIN_LOG("Sleep test OK!");
             }
             break;
         }
 
-        case 'R': // enroll
-        case 'r':
+        case 'E': // enroll
+        case 'e':
         {
-            FP_LOG("Enroll test");
+            MAIN_LOG("Enroll test");
             mySensor.R558_Enroll(4);
             break;
         }
@@ -213,19 +260,88 @@ int main(void)
         case 'T': // get template number
         case 't':
         {
-            FP_LOG("Get Template test");
+            MAIN_LOG("Get Template test");
 
             uint16_t temp_numb = 1000;
 
-            FP_LOG("Getting Template numb....");
-
             if (mySensor.R558_GetTemplateNum(&temp_numb) != SENS_OK)
             {
-                FP_LOG("Error getting template number!");
+                MAIN_LOG("Get Template test failed!");
             }
             else
             {
-                FP_LOG("Template numb = %d", temp_numb);
+                MAIN_LOG("Get Template test OK!   Template numb = %d", temp_numb);
+            }
+            break;
+        }
+
+        case 'U': // Upload Image to Upper Computer
+        case 'u':
+        {
+            uint8_t img[16384] = {0};
+            uint8_t pageId = 1;  // index of the fingerprint in flash
+            uint16_t imgLen = 0; // index of the fingerprint in flash
+
+            MAIN_LOG("Upload Image to Upper Computer test");
+
+            std::cout << " select no. (1, 2, 3, 4) " << std::endl;
+            std::cin >> choice;
+            if (choice >= '0' && choice <= '9')
+            {
+                pageId = choice - '0'; // converte '5' in 5
+                std::cout << "pageId = " << pageId << std::endl;
+            }
+            else
+            {
+                std::cout << "Non hai inserito una cifra!  default pageId = 1" << std::endl;
+            }
+
+            if (mySensor.R558_UploadImage(pageId, img, sizeof(img), &imgLen) != SENS_OK)
+            {
+                MAIN_LOG("Upload Image to Upper Computer test FAILED!");
+            }
+            else
+            {
+                MAIN_LOG("Upload Image to Upper Computer test OK");
+                MAIN_LOG("Image size == %d", imgLen);
+                // printBuffer(img, imgLen);
+                printBuffer(img, 100);
+            }
+            break;
+        }
+
+        case 'D': // Delete template
+        case 'd':
+        {
+            uint8_t pageId = 3; // index of the fingerprint in flash
+
+            MAIN_LOG("Delete template test");
+
+            if (mySensor.R558_DeleteFingerprints(pageId, 2) != SENS_OK)
+            {
+                MAIN_LOG("Delete template test FAILED!");
+            }
+            else
+            {
+                MAIN_LOG("Delete template test OK");
+            }
+            break;
+        }
+
+        case 'F': // Delete all fingeprint
+        case 'f':
+        {
+            uint8_t pageId = 3; // index of the fingerprint in flash
+
+            MAIN_LOG("Delete all fingeprint test");
+
+            if (mySensor.R558_ClearAllFingerprints() != SENS_OK)
+            {
+                MAIN_LOG("Delete all fingeprint test FAILED!");
+            }
+            else
+            {
+                MAIN_LOG("Delete all fingeprint test OK");
             }
             break;
         }
@@ -237,8 +353,8 @@ int main(void)
     } while ((choice != 'X') && (choice != 'x'));
 
 #if 0 // test accuracy
-    FP_LOG("==================================================================");
-    FP_LOG("Accuracy match test");
+    MAIN_LOG("==================================================================");
+    MAIN_LOG("Accuracy match test");
     uint16_t out_score;
 
     if (mySensor.R558_CheckAccuracy(&out_score) != SENS_OK)
@@ -253,8 +369,8 @@ int main(void)
 #endif
 
 #if 0 // Read information page
-    FP_LOG("==================================================================");
-    FP_LOG("Read information page test");
+    MAIN_LOG("==================================================================");
+    MAIN_LOG("Read information page test");
     uint8_t inf[1024];
 
     if (mySensor.R558_ReadInformationPage(inf) != SENS_OK)
@@ -274,14 +390,14 @@ int main(void)
 
             s.append(" " + ss.str());
 
-            FP_LOG("%s", s.c_str());
+            MAIN_LOG("%s", s.c_str());
         } // namespace std
     }
 #endif
 
 #if 0 // Sleep test
-    FP_LOG("==================================================================");
-    FP_LOG("Sleep test test");
+    MAIN_LOG("==================================================================");
+    MAIN_LOG("Sleep test test");
 
     if (mySensor.R558_Sleep() != SENS_OK)
     {
@@ -293,10 +409,7 @@ int main(void)
     }
 #endif
 
-    // to be removed
-    //  mySensor.SendHello();
-    //  mySensor.GetHello();
-    FP_LOG("==================================================================");
+    MAIN_LOG("==================================================================");
     return 0;
 }
 #endif
@@ -316,7 +429,7 @@ int main(void)
     ss << "0x" << std::hex << std::uppercase << std::setw(2) << std::setfill('0') << static_cast<int>(val);
     s.append(" " + ss.str());
 
-    FP_LOG("%s", s.c_str());
+    MAIN_LOG("%s", s.c_str());
 
     return 0;
 }

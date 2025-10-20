@@ -8,6 +8,9 @@
 #include <chrono>
 #include <windows.h>
 
+#include <fstream>
+#include <cstdint>
+
 #include "FingerPrintSensor.h"
 
 char Port_Name[][10] = {
@@ -23,6 +26,7 @@ char Port_Name[][10] = {
     "\\\\.\\COM10",
 };
 
+static void printArray(const char *name, uint8_t *buf, uint16_t bufLen);
 static uint32_t getTick();
 
 bool R558::openConnection()
@@ -92,15 +96,12 @@ bool R558::openConnection()
 
 R558::R558()
 {
-    memset(SystemParameters, 0x00, sizeof(SystemParameters));
-    SerialPort = SER_P_COM4;
-    baudrate = SER_P_BAUDRATE_57600;
-    openConnection();
+    R558(SER_P_COM4, SER_P_BAUDRATE_57600);
 }
 
 R558::R558(uint8_t serPort, int baudrate)
 {
-    memset(SystemParameters, 0x00, sizeof(SystemParameters));
+    memset(&SystemParameters, 0x00, sizeof(SystemParameters));
     SerialPort = serPort;
     this->baudrate = baudrate;
     openConnection();
@@ -198,7 +199,6 @@ SENS_StatusTypeDef R558::R558_Verify(uint16_t *out_page_id, uint16_t *out_score)
 {
     SENS_StatusTypeDef status;
 
-    FP_LOG("\r\n=== VERIFY FINGERPRINT ===");
     FP_LOG("Place your finger...");
     if (WaitForFingerPlacement(20000) != SENS_OK)
     {
@@ -219,18 +219,14 @@ SENS_StatusTypeDef R558::R558_Verify(uint16_t *out_page_id, uint16_t *out_score)
     // Search entire library; change range if you have different capacity
     uint16_t page_id = 0, score = 0;
     FP_LOG("Searching Database...");
-    if (R558_SearchDatabase(&page_id, &score, 0x0000, 0x0064) == SENS_OK)
+    status = R558_SearchDatabase(&page_id, &score, 0x0000, 0x0064);
+    if (status == SENS_OK)
     {
         FP_LOG("Match found: ID=%d Score=%d", page_id, score);
         if (out_page_id)
             *out_page_id = page_id;
         if (out_score)
             *out_score = score;
-        status = SENS_OK;
-    }
-    else
-    {
-        status = SENS_ERROR;
     }
 
     FP_LOG("Please remove your finger...");
@@ -253,27 +249,8 @@ SENS_StatusTypeDef R558::R558_CheckAccuracy(uint16_t *accuracyVal, uint16_t page
     uint8_t params[3]; // = {BufferID, PageID (high), PageID(low)}
     uint16_t out_score;
 
-    params[0] = 2; // BufferID
-    params[1] = (page_id >> 8) & 0XFF;
-    params[2] = page_id & 0XFF;
-
-    cmd_len = R558_BuildCommand(cmd, R558_INS_LOAD_CHAR, params, 3);
-
-    memset(resp, 0x00, sizeof(resp));
-    DB_LOG("Reading template from flash...");
-    if (R558_SendCommand(cmd, cmd_len, resp, sizeof(resp)) == SENS_OK)
-    {
-        if (resp[9] == R558_CONFIRM_OK)
-        {
-            DB_LOG("Reading template from flash OK");
-            ret = SENS_OK;
-        }
-        else
-        {
-            DB_LOG("Reading template from flash failed (code=0x%02X)", resp[9]);
-            ret = SENS_ERROR;
-        }
-    }
+    // LoadChar from Flash library into template buffer 1
+    R558_LoadChar(2, page_id);
 
     ///////////////////////////////////////////////////////////////
 
@@ -369,26 +346,91 @@ SENS_StatusTypeDef R558::R558_DeleteFingerprints(uint16_t from_ID, uint16_t num_
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 
+SENS_StatusTypeDef R558::ReceivePackets(uint8_t *infOut, uint16_t infOutMaxLen, uint16_t *totalLen)
+{
+    uint8_t packageID = 0x00;
+    uint16_t payload_len = 0;
+    uint16_t countBytes = 0;
+    uint16_t total_len = 0;
+    uint8_t *infPtr = infOut;
+    uint8_t header[32] = {0};
+
+    DB_LOG("Receiving packets...");
+    *totalLen = 0;
+
+#if 0 // store in file
+    std::ofstream file("output.bin", std::ios::binary);
+    if (!file)
+    {
+        std::cerr << "Errore apertura file per scrittura: " << "output.bin" << "\n";
+        return SENS_ERROR;
+    }
+#endif
+    do
+    {
+        // DB_LOG("infPtr == 0x%X--------------------------------------------------------------", infPtr);
+        // DB_LOG("countBytes == %d", countBytes);
+
+        // Receive header (9 bytes): EF01 + Addr(4) + PID + LEN_H + LEN_L
+        if (SENS_UART_Receive(header, 9) != SENS_OK)
+        {
+            DB_LOG("UART receive failed (header)");
+            return SENS_ERROR;
+        }
+
+        /* Read Package identifier */
+        packageID = header[6];
+
+        /* Read Package length */
+        payload_len = ((uint16_t)header[7] << 8) | header[8];
+        total_len = 9 + payload_len; // header + payload_len (payload includes checksum)
+
+        if ((countBytes + payload_len) > infOutMaxLen)
+        {
+            DB_LOG("Response too large (%d bytes, buffer max %d)", total_len, 512);
+            return SENS_ERROR;
+        }
+
+        // Read rest of packet (payload_len bytes)
+        if (payload_len > 0)
+        {
+            // Receive Package data + Checksum
+            if (SENS_UART_Receive(infPtr, payload_len) != SENS_OK)
+            {
+                DB_LOG("UART receive failed (payload)");
+                return SENS_ERROR;
+            }
+        }
+
+#if 0
+        file.write(reinterpret_cast<const char *>(infPtr), (payload_len - 2));
+        if (!file)
+        {
+            std::cerr << "Errore durante la scrittura del file.\n";
+        }
+#endif
+
+        countBytes += (payload_len - 2); // 2 for checksum
+        infPtr += (payload_len - 2);
+
+    } while (packageID != 0x08);
+
+    *totalLen = countBytes;
+#if 0    
+    file.close();
+#endif
+
+    return SENS_OK;
+}
+
 SENS_StatusTypeDef R558::SENS_UART_Transmit(uint8_t *cmd, uint16_t cmd_len)
 {
     FlushFileBuffers(serialHandle);
 
 #if LOG_UART_READ_WRITE
-    using namespace std;
-    {
-        std::stringstream ss;
-        DB_LOG("Sending data - cmd_len == %d", cmd_len);
-
-        string s("SENS_UART_Transmit : ");
-        for (int i = 0; i < cmd_len; i++)
-            ss << " 0x" << std::hex << std::uppercase << std::setw(2) << std::setfill('0') << static_cast<int>(cmd[i]);
-
-        s.append(" " + ss.str());
-
-        DB_LOG("%s", s.c_str());
-    } // namespace std
-
+    printArray("SENS_UART_Transmit: ", cmd, cmd_len);
 #endif
+
     if (WriteFile(serialHandle, cmd, cmd_len, NULL, NULL) == false)
     {
         DB_LOG("Error Sending data");
@@ -403,11 +445,10 @@ SENS_StatusTypeDef R558::SENS_UART_Receive(uint8_t *response, uint16_t resp_len)
     if (ReadFile(serialHandle, response, resp_len, &numByteRead, NULL) == false)
     {
         err = GetLastError();
-        DB_LOG("Error Receivin data: errNo == %d");
+        DB_LOG("Error Receiving data: errNo == %d", err);
         return SENS_ERROR;
     }
 
-#if LOG_UART_READ_WRITE
     if (numByteRead == 0)
     {
         err = GetLastError();
@@ -420,24 +461,13 @@ SENS_StatusTypeDef R558::SENS_UART_Receive(uint8_t *response, uint16_t resp_len)
             DB_LOG("error no: %d", err);
         }
 
-        DB_LOG("Error Receivin data - numByteRead == 0");
+        DB_LOG("Error Receiving data - numByteRead == 0");
         return SENS_TIMEOUT;
     }
 
-    DB_LOG("Reveiving data - resp_len == %d", resp_len);
-    DB_LOG("Receivin data - numByteRead == %d", numByteRead);
-    using namespace std;
-    {
-        std::stringstream ss;
-        string s("SENS_UART_Receive : ");
-        for (int i = 0; i < numByteRead; i++)
-            ss << " 0x" << std::hex << std::uppercase << std::setw(2) << std::setfill('0') << static_cast<int>(response[i]);
-
-        s.append(" " + ss.str());
-
-        DB_LOG("%s", s.c_str());
-    }
-
+#if LOG_UART_READ_WRITE
+    DB_LOG("Expected data len: %d", resp_len);
+    printArray("SENS_UART_Receive: ", response, numByteRead);
 #endif
 
     return SENS_OK;
@@ -693,7 +723,7 @@ SENS_StatusTypeDef R558::R558_CaptureFinger(void)
     return SENS_ERROR;
 }
 
-// Img2Tz - Convert image to characteristic file (buffer 1 or 2)
+// Img2Tz - Convert image to characteristic file (buffer 1 to 4)
 SENS_StatusTypeDef R558::R558_Image2Tz(uint8_t buffer_id)
 {
     if (buffer_id < 1 || buffer_id > 4)
@@ -808,7 +838,7 @@ SENS_StatusTypeDef R558::R558_SearchDatabase(uint16_t *out_page_id, uint16_t *ou
         else if (resp[9] == R558_CONFIRM_NOMATCH)
         {
             DB_LOG("No matching fingerprint found (code=0x09)");
-            return SENS_ERROR;
+            return SENS_NO_MATCH;
         }
         else
         {
@@ -819,25 +849,57 @@ SENS_StatusTypeDef R558::R558_SearchDatabase(uint16_t *out_page_id, uint16_t *ou
     return SENS_ERROR;
 }
 
-SENS_StatusTypeDef R558::R558_GetTemplateNum(uint16_t *out_temp_num)
+SENS_StatusTypeDef R558::R558_LoadChar(uint8_t buffer_id, uint16_t page_id)
 {
+    SENS_StatusTypeDef ret = SENS_ERROR;
     uint8_t cmd[16];
-    uint16_t cmd_len = R558_BuildCommand(cmd, R558_INS_TEMPNUM, NULL, 0);
-
+    uint16_t cmd_len = 0;
     uint8_t resp[32] = {0};
-    DB_LOG("Reading current valid template number...");
+    uint8_t params[3]; // = {BufferID, PageID (high), PageID(low)}
+
+    params[0] = buffer_id; // BufferID
+    params[1] = (page_id >> 8) & 0XFF;
+    params[2] = page_id & 0XFF;
+
+    cmd_len = R558_BuildCommand(cmd, R558_INS_LOAD_CHAR, params, 3);
+
+    DB_LOG("Loading template from flash...   (BufferID = %d - PageID = %d)", buffer_id, page_id);
     if (R558_SendCommand(cmd, cmd_len, resp, sizeof(resp)) == SENS_OK)
     {
         if (resp[9] == R558_CONFIRM_OK)
         {
-            DB_LOG("Read template number OK.");
-            //*out_temp_num = (uint16_t)resp[10];
+            DB_LOG("Loading template from flash OK");
+            ret = SENS_OK;
+        }
+        else
+        {
+            DB_LOG("Loading template from flash failed (code=0x%02X)", resp[9]);
+            ret = SENS_ERROR;
+        }
+    }
+    return ret;
+}
+
+/* Read the current valid template number of the module */
+SENS_StatusTypeDef R558::R558_GetTemplateNum(uint16_t *out_temp_num)
+{
+    uint8_t cmd[16];
+    uint8_t resp[32] = {0};
+    uint16_t cmd_len = R558_BuildCommand(cmd, R558_INS_TEMPNUM, NULL, 0);
+
+    FP_LOG("Reading current valid template number...");
+
+    if (R558_SendCommand(cmd, cmd_len, resp, sizeof(resp)) == SENS_OK)
+    {
+        if (resp[9] == R558_CONFIRM_OK)
+        {
+            FP_LOG("Read template number OK.");
             *out_temp_num = ((uint16_t)resp[10] << 8) | resp[11];
             return SENS_OK;
         }
         else
         {
-            DB_LOG("Read template number failed!");
+            FP_LOG("Read template number failed!");
             return SENS_ERROR;
         }
     }
@@ -897,116 +959,113 @@ SENS_StatusTypeDef R558::R558_Sleep()
     return SENS_ERROR;
 }
 
+/* Read Basic parameter list (16bytes) */
 SENS_StatusTypeDef R558::R558_ReadSystemParameters(void)
 {
     uint8_t cmd[16];
     uint16_t cmd_len = R558_BuildCommand(cmd, R558_INS_READ_SYS_PARA, NULL, 0);
 
     uint8_t resp[32] = {0};
-    DB_LOG("Reading System parameters...");
+    FP_LOG("Reading System parameters...");
     if (R558_SendCommand(cmd, cmd_len, resp, sizeof(resp)) == SENS_OK)
     {
         if (resp[9] == R558_CONFIRM_OK)
         {
-            DB_LOG("Read complete!");
-            memcpy(&SystemParameters[0], &resp[10], 16);
+            FP_LOG("Read complete!");
+
+            uint8_t parametersArray[R558_SYSTEM_PARAM_SIZE];
+            memcpy(&parametersArray[0], &resp[10], 16);
+
+            SystemParameters.EnrollTimes = TO_UINT16_BE(&parametersArray[0]);
+            SystemParameters.FP_Template_Size = TO_UINT16_BE(&parametersArray[2]);
+            SystemParameters.FP_Database_Size = TO_UINT16_BE(&parametersArray[4]);
+            SystemParameters.ScoreLevel = TO_UINT16_BE(&parametersArray[6]);
+            SystemParameters.DeviceAddress = TO_UINT32_BE(&parametersArray[8]);
+            SystemParameters.DataPacketSize = TO_UINT16_BE(&parametersArray[12]);
+            SystemParameters.BaudSettings = TO_UINT16_BE(&parametersArray[14]);
+
             return SENS_OK;
         }
         else
         {
-            DB_LOG("Reading error when receiving package");
+            FP_LOG("Reading error when receiving package");
             return SENS_ERROR;
         }
     }
     return SENS_ERROR;
 }
 
+/* Shows the system parameters of the module */
 SENS_StatusTypeDef R558::R558_ShowSystemParameters(void)
 {
     // to be review....
 
     // to call R558_ReadSystemParameters if it is private
 
-    SystemParam_t params;
-    // memcpy(&params, SystemParameters, sizeof(SystemParameters));
+    FP_LOG("Show System Parameters: ");
 
-    params.EnrollTimes = TO_UINT16_BE(&SystemParameters[0]);
-    params.FP_Template_Size = TO_UINT16_BE(&SystemParameters[2]);
-    params.FP_Database_Size = TO_UINT16_BE(&SystemParameters[4]);
-    params.ScoreLevel = TO_UINT16_BE(&SystemParameters[6]);
-    params.DeviceAddress = TO_UINT32_BE(&SystemParameters[8]);
-    params.DataPacketSize = TO_UINT16_BE(&SystemParameters[12]);
-    params.BaudSettings = TO_UINT16_BE(&SystemParameters[14]);
-
-    std::cout << SystemParametersName[0] << params.EnrollTimes << std::endl;
-    std::cout << SystemParametersName[1] << params.FP_Template_Size << std::endl;
-    std::cout << SystemParametersName[2] << params.FP_Database_Size << std::endl;
-    std::cout << SystemParametersName[3] << params.ScoreLevel << std::endl;
-    std::cout << SystemParametersName[4] << " 0x" << std::hex << std::uppercase << std::setw(2) << std::setfill('0') << params.DeviceAddress << std::endl;
+    std::cout << SystemParametersName[0] << SystemParameters.EnrollTimes << std::endl;
+    std::cout << SystemParametersName[1] << SystemParameters.FP_Template_Size << std::endl;
+    std::cout << SystemParametersName[2] << SystemParameters.FP_Database_Size << std::endl;
+    std::cout << SystemParametersName[3] << SystemParameters.ScoreLevel << std::endl;
+    std::cout << SystemParametersName[4] << " 0x" << std::hex << std::uppercase
+              << std::setw(2) << std::setfill('0')
+              << SystemParameters.DeviceAddress << std::endl;
     std::cout << std::dec;
-    std::cout << SystemParametersName[5] << params.DataPacketSize << std::endl;
-    std::cout << SystemParametersName[6] << params.BaudSettings << std::endl;
+    std::cout << SystemParametersName[5] << SystemParameters.DataPacketSize << std::endl;
+    std::cout << SystemParametersName[6] << SystemParameters.BaudSettings << std::endl;
 
     return SENS_OK;
 }
 
-SENS_StatusTypeDef R558::R558_ReadInformationPage(uint8_t *infOut)
+/* Read informaton page (512bytes) */
+SENS_StatusTypeDef R558::R558_ReadInformationPage(uint8_t *infOut, uint16_t infOutLen, uint16_t *totalLen)
 {
     uint8_t cmd[16];
     uint16_t cmd_len = R558_BuildCommand(cmd, R558_INS_READ_INF_PAGE, NULL, 0);
 
     uint8_t resp[32] = {0};
-    DB_LOG("Reading information page...");
+    FP_LOG("Reading information page...");
     if (R558_SendCommand(cmd, cmd_len, resp, sizeof(resp)) == SENS_OK)
     {
         if (resp[9] == R558_CONFIRM_OK)
         {
-            DB_LOG("Reading information page OK! Receiving next data...");
-            // Receive header (9 bytes): EF01 + Addr(4) + PID + LEN_H + LEN_L
+            FP_LOG("Reading information page OK! Receiving next data...");
 
-            uint8_t packageID = 0x00;
-            uint8_t *infPtr = infOut;
-            do
-            {
-
-                if (SENS_UART_Receive(infPtr, 9) != SENS_OK)
-                {
-                    DB_LOG("UART receive failed (header)");
-                    return SENS_ERROR;
-                }
-
-                packageID = infPtr[6];
-
-                uint16_t payload_len = ((uint16_t)infPtr[7] << 8) | infPtr[8];
-                uint16_t total_len = 9 + payload_len; // header + payload_len (payload includes checksum)
-
-                if (total_len > 512)
-                {
-                    DB_LOG("Response too large (%d bytes, buffer max %d)", total_len, 512);
-                    return SENS_ERROR;
-                }
-
-                // Read rest of packet (payload_len bytes)
-                if (payload_len > 0)
-                {
-                    if (SENS_UART_Receive(&infPtr[9], payload_len) != SENS_OK)
-                    {
-                        DB_LOG("UART receive failed (payload)");
-                        return SENS_ERROR;
-                    }
-                }
-
-                infPtr += total_len;
-            } while (packageID != 0x08);
-
-            return SENS_OK;
+            return ReceivePackets(infOut, infOutLen, totalLen);
         }
         else
         {
-            DB_LOG("Reading information page failed!");
+            FP_LOG("Reading information page failed!");
             return SENS_ERROR;
         }
     }
+    return SENS_ERROR;
+}
+
+/* Upload the image in Img_Buffer to upper computer */
+SENS_StatusTypeDef R558::R558_UploadImage(uint16_t page_id, uint8_t *infOut, uint16_t infOutLen, uint16_t *totalLen)
+{
+    uint8_t cmd[16];
+    uint8_t resp[32] = {0};
+
+    uint16_t cmd_len = R558_BuildCommand(cmd, R558_INS_UPIMAGE, NULL, 0);
+
+    FP_LOG("Sending UpImage command...");
+    if (R558_SendCommand(cmd, cmd_len, resp, sizeof(resp)) == SENS_OK)
+    {
+        if (resp[9] == R558_CONFIRM_OK)
+        {
+            FP_LOG("UpImage command sent OK!");
+            return ReceivePackets(infOut, infOutLen, totalLen);
+        }
+        else
+        {
+            FP_LOG("Sending UpImage command failed!");
+            return SENS_ERROR;
+        }
+    }
+
     return SENS_ERROR;
 }
 
@@ -1016,6 +1075,24 @@ SENS_StatusTypeDef R558::R558_ReadInformationPage(uint8_t *infOut)
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 
+static void printArray(const char *name, uint8_t *buf, uint16_t bufLen)
+{
+    using namespace std;
+    {
+        std::stringstream ss;
+        string s(name);
+
+        s.append("(len=" + to_string(bufLen) + ")");
+
+        for (int i = 0; i < bufLen; i++)
+            ss << " 0x" << std::hex << std::uppercase << std::setw(2) << std::setfill('0') << static_cast<int>(buf[i]);
+
+        s.append(" " + ss.str());
+
+        DB_LOG("%s", s.c_str());
+    } // namespace std
+}
+
 static uint32_t getTick()
 {
     using namespace std::chrono;
@@ -1023,52 +1100,3 @@ static uint32_t getTick()
                                      steady_clock::now().time_since_epoch())
                                      .count());
 }
-
-// to be removed
-void R558::SendHello()
-{
-    char helloString[] = "Hello World form C++ program!\n\r";
-
-    if (serialHandle == INVALID_HANDLE_VALUE)
-    {
-        std::cout << "INVALID_HANDLE_VALUE : cannot send data." << std::endl;
-    }
-    else
-    {
-
-        std::cout << "Sending hello...." << std::endl;
-
-        if (SENS_UART_Transmit((uint8_t *)helloString, strlen(helloString)) != SENS_OK)
-        // if (WriteFile(serialHandle, helloString, strlen(helloString), NULL, NULL) == false)
-        {
-            std::cout << "Error Sending data" << std::endl;
-        }
-    }
-}
-
-void R558::GetHello()
-{
-    char helloString[50];
-    DWORD NoOfBytesRead = 0;
-
-    if (serialHandle == INVALID_HANDLE_VALUE)
-    {
-        std::cout << "INVALID_HANDLE_VALUE : cannot receive data." << std::endl;
-    }
-    else
-    {
-
-        std::cout << "Receiving hello.... " << std::endl;
-
-        if (SENS_UART_Receive((uint8_t *)helloString, sizeof(helloString)) != SENS_OK)
-        // if (ReadFile(serialHandle, helloString, sizeof(helloString), &NoOfBytesRead, NULL) == false)
-        {
-            std::cout << "Error Receivin data" << std::endl;
-        }
-        else
-        {
-            std::cout << "Received msg: " << helloString << std::endl;
-        }
-    }
-}
-////////////////

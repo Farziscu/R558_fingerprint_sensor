@@ -3,10 +3,10 @@
 
 #include "FingerPrintSensor_defines.h"
 
-#define USE_DEBUG_LOG 1 // Debug all the steps
 #define USE_MAIN_LOG 1  // only the user intractable Logs
+#define USE_DEBUG_LOG 0 // Debug all the steps
 
-#define LOG_UART_READ_WRITE 1 // Prints in/out buffer over serial
+#define LOG_UART_READ_WRITE 0 // Prints in/out buffer over serial
 
 class R558
 {
@@ -14,14 +14,14 @@ private:
     uint8_t SerialPort; // es SER_P_COMx
     int baudrate;
     HANDLE serialHandle = INVALID_HANDLE_VALUE;
-    uint8_t SystemParameters[R558_SYSTEM_PARAM_SIZE]; // System parameters list    //es: = {0x00, 0x04, 0x00, 0x00, 0x00, 0x64, 0x00, 0x03, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x02, 0x00, 0x06};
+    SystemParam_t SystemParameters;
 
 public:
     R558();
     R558(uint8_t serPort, int baudrate);
     ~R558();
 
-    SENS_StatusTypeDef isSensorConnected() { return (serialHandle == INVALID_HANDLE_VALUE) ? SENS_ERROR : SENS_OK; };
+    SENS_StatusTypeDef R558_isConnected() { return (serialHandle == INVALID_HANDLE_VALUE) ? SENS_ERROR : SENS_OK; };
 
     /* Enroll fingerprint (captures twice, creates model and stores at page_id). */
     SENS_StatusTypeDef R558_Enroll(uint16_t page_id);
@@ -41,23 +41,26 @@ public:
     /* Delete Fingerprints starting from -> from_ID, number of FP to be deleted -> num_fp */
     SENS_StatusTypeDef R558_DeleteFingerprints(uint16_t from_ID, uint16_t num_fp);
 
-    SENS_StatusTypeDef R558_GetTemplateNum(uint16_t *out_temp_num);
-
     SENS_StatusTypeDef R558_ManageLED();
 
     SENS_StatusTypeDef R558_Sleep();
 
-    // renderlo privato?
+    /* GET GENERIC INFORMATION FROM THE MODULE */
+
+    /* Read the current valid template number of the module */
+    SENS_StatusTypeDef R558_GetTemplateNum(uint16_t *out_temp_num);
+
+    /* Read Basic parameter list (16bytes) */
     SENS_StatusTypeDef R558_ReadSystemParameters(void);
 
+    /* Shows the system parameters of the module */
     SENS_StatusTypeDef R558_ShowSystemParameters(void);
 
-    SENS_StatusTypeDef R558_ReadInformationPage(uint8_t *infOut);
+    /* Read informaton page (512bytes) */
+    SENS_StatusTypeDef R558_ReadInformationPage(uint8_t *infOut, uint16_t infOutLen, uint16_t *totalLen);
 
-    // to be removed
-    void SendHello();
-    void GetHello();
-    ////////////////
+    /* Upload the image in Img_Buffer to upper computer */
+    SENS_StatusTypeDef R558_UploadImage(uint16_t page_id, uint8_t *infOut, uint16_t infOutLen, uint16_t *totalLen);
 
 private:
     bool openConnection();
@@ -73,6 +76,9 @@ private:
     SENS_StatusTypeDef R558_GenerateTemplate(void);
     SENS_StatusTypeDef R558_StoreTemplate(uint8_t buffer_id, uint16_t page_id);
     SENS_StatusTypeDef R558_SearchDatabase(uint16_t *out_page_id, uint16_t *out_score, uint16_t start_page, uint16_t page_num);
+    SENS_StatusTypeDef R558_LoadChar(uint8_t buffer_id, uint16_t page_id);
+
+    SENS_StatusTypeDef ReceivePackets(uint8_t *infOut, uint16_t infOutMaxLen, uint16_t *totalLen);
 
     SENS_StatusTypeDef SENS_UART_Transmit(uint8_t *cmd, uint16_t cmd_len);
     SENS_StatusTypeDef SENS_UART_Receive(uint8_t *response, uint16_t resp_len);

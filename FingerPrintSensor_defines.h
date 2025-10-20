@@ -7,6 +7,7 @@
 #define R558_INS_REGMODEL 0x05         /* RegModel: merge buffers -> template */
 #define R558_INS_STORE 0x06            /* Store template to flash */
 #define R558_INS_LOAD_CHAR 0x07        /* Read template from Flash library */
+#define R558_INS_UPIMAGE 0x0A          /* To upload image to upper computer */
 #define R558_INS_DELETE 0x0C           /* Delete templates */
 #define R558_INS_EMPTY 0x0D            /* Empty library */
 #define R558_INS_VERIFYPWD 0x13        /* Verify password */
@@ -108,5 +109,6 @@ typedef enum
     SENS_OK = 0x00U,
     SENS_ERROR = 0x01U,
     SENS_BUSY = 0x02U,
-    SENS_TIMEOUT = 0x03U
+    SENS_TIMEOUT = 0x03U,
+    SENS_NO_MATCH = 0x04U
 } SENS_StatusTypeDef;
