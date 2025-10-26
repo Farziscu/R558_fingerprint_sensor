@@ -180,6 +180,20 @@ SENS_StatusTypeDef R558::R558_Enroll(uint16_t page_id)
     return SENS_OK;
 }
 
+/* Enroll fingerprint: calculate next index and then call Enroll into the next index */
+SENS_StatusTypeDef R558::R558_EnrollNextIndex()
+{
+    uint8_t idx = 0;
+    if (FindNextIndex(&idx) == SENS_OK)
+    {
+        if (R558_Enroll(idx) == SENS_OK)
+        {
+            return UpdateNextIndex(R558_UPDATE_SET, idx);
+        }
+    }
+    return SENS_ERROR;
+}
+
 /* Verify fingerprint (capture -> convert -> search over library range 0..1000).
 * out_page_id / out_score are optional outputs.
 *
@@ -584,6 +598,9 @@ SENS_StatusTypeDef R558::R558_ClearAllTemplates(void)
         if (resp[9] == R558_CONFIRM_OK)
         {
             DB_LOG("All templates cleared");
+            /* Update Notepad data */
+            memset(IDs_Table, 0x00, sizeof(IDs_Table));
+            R558_WriteNotepad(1, IDs_Table);
             return SENS_OK;
         }
         else
@@ -613,6 +630,12 @@ SENS_StatusTypeDef R558::R558_DeleteTemplate(uint16_t page_id, uint16_t count)
         if (resp[9] == R558_CONFIRM_OK)
         {
             DB_LOG("Delete OK");
+
+            DB_LOG("Updating IDs table...");
+            for (uint8_t i = 0; i < count; i++)
+            {
+                UpdateNextIndex(R558_UPDATE_RESET, page_id + i);
+            }
             return SENS_OK;
         }
         else
@@ -696,6 +719,81 @@ SENS_StatusTypeDef R558::WaitForFingerPlacement(uint32_t timeout_ms)
 
         Sleep(300); // Wait before next check
     }
+}
+
+SENS_StatusTypeDef R558::FindNextIndex(uint8_t *idx)
+{
+    uint8_t selectedByte = 0;
+    uint8_t i = 0;
+
+    *idx = 0;
+
+    /* Reading 32 notepad user data */
+    if (!isNotepadDataValid)
+    {
+        if (R558_ReadNotepad(1, IDs_Table) != SENS_OK)
+        {
+            return SENS_ERROR;
+        }
+        isNotepadDataValid = true;
+    }
+
+    /* first 13(R558_MAX_BYTE_FOR_100_FP) bytes are used to store IDs free */
+    while (IDs_Table[i] == 0xFF)
+    {
+        i++;
+        if (i > R558_MAX_BYTE_FOR_100_FP)
+            break; // to count 100 (=R558_MAX_FINGERPRINT) fingerprints I need 13(R558_MAX_BYTE_FOR_100_FP) byte.
+    }
+
+    if (i < R558_MAX_BYTE_FOR_100_FP)
+    {
+        selectedByte = IDs_Table[i];
+
+        *idx = *idx + 1;
+
+        while ((selectedByte & 0x80) != 0)
+        {
+            selectedByte = selectedByte << 1;
+            *idx = *idx + 1;
+            if (*idx == 8)
+                break;
+        }
+
+        *idx = *idx + (i * 8);
+        if (*idx > R558_MAX_FINGERPRINT)
+        {
+            return SENS_ERROR;
+        }
+        return SENS_OK;
+    }
+
+    return SENS_ERROR;
+}
+
+SENS_StatusTypeDef R558::UpdateNextIndex(Update_ID choice, uint8_t idx)
+{
+    uint8_t byteNo = (idx - 1) / 8;
+    uint8_t bitNo = (idx - 1) % 8;
+
+    if (byteNo < R558_MAX_BYTE_FOR_100_FP)
+    {
+        if (choice == R558_UPDATE_SET)
+        {
+            IDs_Table[byteNo] |= (0x80 >> bitNo);
+        }
+        else
+        {
+            // choice == R558_UPDATE_RESET
+            IDs_Table[byteNo] &= ~(0x80 >> bitNo);
+        }
+
+        printArray("UpdateNextIndex", IDs_Table, 13);
+
+        return R558_WriteNotepad(1, IDs_Table);
+    }
+
+    return SENS_ERROR;
 }
 
 // GenImg - Capture fingerprint image (no params / no toggles). The R558 returns codes:
@@ -880,6 +978,56 @@ SENS_StatusTypeDef R558::R558_LoadChar(uint8_t buffer_id, uint16_t page_id)
     return ret;
 }
 
+/* Check whether the module works properly */
+SENS_StatusTypeDef R558::R558_HandShake(void)
+{
+    uint8_t cmd[16];
+    uint8_t resp[32] = {0};
+    uint16_t cmd_len = R558_BuildCommand(cmd, R558_INS_HANDSHAKE, NULL, 0);
+
+    FP_LOG("HandShake command...");
+
+    if (R558_SendCommand(cmd, cmd_len, resp, sizeof(resp)) == SENS_OK)
+    {
+        if (resp[9] == R558_CONFIRM_OK)
+        {
+            FP_LOG("HandShake command OK. The module works properly.");
+            return SENS_OK;
+        }
+        else
+        {
+            FP_LOG("HandShake command failed!");
+            return SENS_ERROR;
+        }
+    }
+    return SENS_ERROR;
+}
+
+/* Check whether the sensor works properly */
+SENS_StatusTypeDef R558::R558_CheckSensor(void)
+{
+    uint8_t cmd[16];
+    uint8_t resp[32] = {0};
+    uint16_t cmd_len = R558_BuildCommand(cmd, R558_INS_CHECKSENSOR, NULL, 0);
+
+    FP_LOG("CheckSensor command...");
+
+    if (R558_SendCommand(cmd, cmd_len, resp, sizeof(resp)) == SENS_OK)
+    {
+        if (resp[9] == R558_CONFIRM_OK)
+        {
+            FP_LOG("CheckSensor command OK. The sensor works normally");
+            return SENS_OK;
+        }
+        else
+        {
+            FP_LOG("CheckSensor command failed! Confirmation code: 0x%X", resp[9]);
+            return SENS_ERROR;
+        }
+    }
+    return SENS_ERROR;
+}
+
 /* Read the current valid template number of the module */
 SENS_StatusTypeDef R558::R558_GetTemplateNum(uint16_t *out_temp_num)
 {
@@ -906,15 +1054,31 @@ SENS_StatusTypeDef R558::R558_GetTemplateNum(uint16_t *out_temp_num)
     return SENS_ERROR;
 }
 
-SENS_StatusTypeDef R558::R558_ManageLED()
+// SENS_StatusTypeDef R558::R558_ManageLED()
+SENS_StatusTypeDef R558::R558_ManageLED(const uint8_t *params)
 {
     uint8_t cmd[16];
+#if 0
+#if 1
     uint8_t params[4] = {
-        R558_FC_NORMAL_BREATHING, // Function number
-        R558_START_COLOR_CYAN_ON, // Starting color
-        R558_END_COLOR_BLUE_ON,   // Ending color
-        3                         // Cycle times
+        R558_FC_FLASH_LIGHT,       // R558_FC_NORMAL_BREATHING, // Function number
+        R558_START_COLOR_GREEN_ON, // Starting color
+        R558_END_COLOR_GREEN_ON,   // Ending color
+        3                          // Cycle times
     };
+#else
+    uint8_t params[8] = {
+        R558_FC_COLORFUL_PROGRAMMED_BREATHING, // Function number
+        20,                                    // Time bit
+        0xC9,                                  // Color1 H + L : valid+Red | valid+Blue
+        0xA9,                                  // Color2 H + L : valid+green | valid+Blue
+        0x90,                                  // Color3 H + L : valid+blue | No_valid
+        0x00,                                  // Color4 H + L : No_valid | No_valid
+        0x00,                                  // Color5 H + L : No_valid | No_valid
+        1                                      // Cycle times
+    };
+#endif
+#endif
     uint16_t cmd_len = R558_BuildCommand(cmd, R558_INS_LED_CONTROL, params, sizeof(params));
 
     uint8_t resp[32] = {0};
@@ -953,6 +1117,35 @@ SENS_StatusTypeDef R558::R558_Sleep()
         else
         {
             DB_LOG("Sending sleep command failed! Confirmation code: 0x%X", resp[9]);
+            return SENS_ERROR;
+        }
+    }
+    return SENS_ERROR;
+}
+
+/* Write module registers */
+SENS_StatusTypeDef R558::R558_WriteReg()
+{
+    uint8_t cmd[16];
+    uint8_t params[2] = {
+        0x11, // Register number
+        0x01  // Contents
+    };
+
+    uint16_t cmd_len = R558_BuildCommand(cmd, R558_INS_WRITE_REG, params, sizeof(params));
+
+    uint8_t resp[32] = {0};
+    DB_LOG("Setting System Register...");
+    if (R558_SendCommand(cmd, cmd_len, resp, sizeof(resp)) == SENS_OK)
+    {
+        if (resp[9] == R558_CONFIRM_OK)
+        {
+            DB_LOG("Setting System Register OK!");
+            return SENS_OK;
+        }
+        else
+        {
+            DB_LOG("Setting System Register failed! Confirmation code: 0x%X", resp[9]);
             return SENS_ERROR;
         }
     }
@@ -1069,6 +1262,81 @@ SENS_StatusTypeDef R558::R558_UploadImage(uint16_t page_id, uint8_t *infOut, uin
     return SENS_ERROR;
 }
 
+/* Write user's data into FLASH */
+SENS_StatusTypeDef R558::R558_WriteNotepad(uint8_t page_id, uint8_t *userData)
+{
+    if (userData == nullptr)
+    {
+        DB_LOG("userData is NULL!");
+        return SENS_ERROR;
+    }
+
+    if (page_id > R558_PAGE_NO_MAX)
+    {
+        DB_LOG("page_id out of range");
+        return SENS_ERROR;
+    }
+
+    uint8_t cmd[50];
+    uint8_t params[33];               // {pageID + userData(32byte)}
+    params[0] = page_id;              // Page number
+    memcpy(&params[1], userData, 32); // User information
+
+    uint16_t cmd_len = R558_BuildCommand(cmd, R558_INS_WRITE_NOTEPD, params, sizeof(params));
+
+    uint8_t resp[32] = {0};
+    DB_LOG("Writing notepad...");
+    if (R558_SendCommand(cmd, cmd_len, resp, sizeof(resp)) == SENS_OK)
+    {
+        if (resp[9] == R558_CONFIRM_OK)
+        {
+            DB_LOG("Writing notepad OK!");
+            return SENS_OK;
+        }
+        else
+        {
+            DB_LOG("Writing notepad failed! Confirmation code: 0x%X", resp[9]);
+            return SENS_ERROR;
+        }
+    }
+    return SENS_ERROR;
+}
+
+/* Read user's data into FLASH */
+SENS_StatusTypeDef R558::R558_ReadNotepad(uint8_t page_id, uint8_t *userData)
+{
+    uint8_t cmd[50];
+    uint8_t params[1] = {page_id}; // Page number
+
+    uint16_t cmd_len = R558_BuildCommand(cmd, R558_INS_READ_NOTEPD, params, sizeof(params));
+
+    uint8_t resp[50] = {0};
+    DB_LOG("Reading notepad...");
+    if (R558_SendCommand(cmd, cmd_len, resp, sizeof(resp)) == SENS_OK)
+    {
+        if (resp[9] == R558_CONFIRM_OK)
+        {
+            DB_LOG("Reading notepad OK! ");
+            /* To be decided what to do... */
+            if (userData == nullptr)
+            {
+                printArray("Notepad contents:", &resp[10], 32);
+            }
+            else
+            {
+                memcpy(userData, &resp[10], 32);
+            }
+            return SENS_OK;
+        }
+        else
+        {
+            DB_LOG("Reading notepad failed! Confirmation code: 0x%X", resp[9]);
+            return SENS_ERROR;
+        }
+    }
+    return SENS_ERROR;
+    ;
+}
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 ////////////////////////////    HELPER FUNCTIONS   ////////////////////////////////////////

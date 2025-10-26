@@ -24,6 +24,14 @@ void printBuffer(uint8_t *buf, uint16_t bufLen)
     } // namespace std
 }
 
+void manageLED_Colour()
+{
+    // yellow: ready
+    // Flashing (blue|green): reading finger
+    // Red: Fail verify | after 3sec goes to ready
+    // Green: OK verify | after 3sec goes to ready
+}
+
 #if 0
 using namespace std;
 int main(void)
@@ -86,9 +94,12 @@ int main(void)
         std::cout << "      V-Verify; " << std::endl;
         std::cout << "      Y-sYstem parameters;" << std::endl;
         std::cout << "      R-Read information Page;" << std::endl;
+        std::cout << "      C-Check sensor and module;" << std::endl;
         std::cout << "      T-Read Template number; " << std::endl;
+        std::cout << "      N-Write Notepad; " << std::endl;
         std::cout << std::endl;
         std::cout << "      S-Sleep;" << std::endl;
+        std::cout << "      W-Write Reg (only for led now);" << std::endl;
         std::cout << "      L-LED; " << std::endl;
         std::cout << "      E-Enroll; " << std::endl;
         std::cout << "      A-Accurate Match; " << std::endl;
@@ -157,12 +168,41 @@ int main(void)
             break;
         }
 
+        case 'C': // Check sensor and module
+        case 'c':
+        {
+            MAIN_LOG("Check sensor and module test");
+
+            if (mySensor.R558_CheckSensor() != SENS_OK)
+            {
+                MAIN_LOG("Check sensor test failed!");
+            }
+            else
+            {
+                MAIN_LOG("Check sensor test OK!");
+            }
+
+            if (mySensor.R558_HandShake() != SENS_OK)
+            {
+                MAIN_LOG("Check module test failed!");
+            }
+            else
+            {
+                MAIN_LOG("Check module test OK!");
+            }
+            break;
+        }
+
         case 'L': // LED CONTROL
         case 'l':
         {
             MAIN_LOG("LED Control test");
 
-            if (mySensor.R558_ManageLED() != SENS_OK)
+            mySensor.R558_ManageLED(LED_ReadyStateParams);
+
+            Sleep(5000);
+
+            if (mySensor.R558_ManageLED(LED_ReadingFingerParams) != SENS_OK)
             {
                 MAIN_LOG("LED Control failed!");
             }
@@ -170,6 +210,10 @@ int main(void)
             {
                 MAIN_LOG("LED Control OK!");
             }
+
+            Sleep(5000);
+
+            mySensor.R558_ManageLED(LED_FailVerifyParams);
 
             break;
         }
@@ -245,6 +289,23 @@ int main(void)
             else
             {
                 MAIN_LOG("Sleep test OK!");
+                mySensor.R558_ManageLED(LED_SleepStateParams);
+            }
+            break;
+        }
+
+        case 'W': // Write Reg
+        case 'w':
+        {
+            MAIN_LOG("Write Reg test");
+
+            if (mySensor.R558_WriteReg() != SENS_OK)
+            {
+                MAIN_LOG("Write Reg test failed!");
+            }
+            else
+            {
+                MAIN_LOG("Write Reg test OK!");
             }
             break;
         }
@@ -252,8 +313,18 @@ int main(void)
         case 'E': // enroll
         case 'e':
         {
+            // mySensor.R558_Enroll(4);
+
             MAIN_LOG("Enroll test");
-            mySensor.R558_Enroll(4);
+
+            if (mySensor.R558_EnrollNextIndex() != SENS_OK)
+            {
+                MAIN_LOG("Enroll test failed!");
+            }
+            else
+            {
+                MAIN_LOG("Enroll test OK!");
+            }
             break;
         }
 
@@ -272,6 +343,63 @@ int main(void)
             {
                 MAIN_LOG("Get Template test OK!   Template numb = %d", temp_numb);
             }
+            break;
+        }
+
+        case 'N': // Write Notepad or read.... change for test
+        case 'n':
+        {
+            uint8_t pageID = 1;
+            uint8_t UserInfo[32] = {0x00};
+            memset(UserInfo, 0xFF, sizeof(UserInfo));
+            // UserInfo[0] = 0xFF; //{1111 1111 }
+            UserInfo[1] = 0xDF;  //{1101 1111}  //pos 11
+            UserInfo[2] = 0xBE;  //{1011 1110}  //pos 18 + pos 24
+            UserInfo[12] = 0xE0; //{1110 1111}  //pos 100
+#if 0
+            MAIN_LOG("Write Notepad test");
+
+            if (mySensor.R558_WriteNotepad(pageID, UserInfo) != SENS_OK)
+            {
+                MAIN_LOG("Write Notepad test failed!");
+            }
+            else
+            {
+                MAIN_LOG("Write Notepad test OK!");
+            }
+#endif
+            MAIN_LOG("Read Notepad test");
+            memset(UserInfo, 0x11, sizeof(UserInfo));
+
+            if (mySensor.R558_ReadNotepad(pageID, UserInfo) != SENS_OK)
+            {
+                MAIN_LOG("Read Notepad test failed!");
+            }
+            else
+            {
+                MAIN_LOG("Read Notepad test OK!");
+                printBuffer(UserInfo, 13);
+            }
+#if 0
+            uint8_t idx = 200;
+            if (mySensor.FindNextIndex(&idx) != SENS_OK)
+            {
+                MAIN_LOG("CalculateNexIndex fails!");
+            }
+            else
+            {
+                MAIN_LOG("CalculateNexIndex OK!   idx == %d", idx);
+            }
+
+            if (mySensor.UpdateNextIndex(&idx) != SENS_OK)
+            {
+                MAIN_LOG("UpdateNextIndex fails!");
+            }
+            else
+            {
+                MAIN_LOG("UpdateNextIndex OK!");
+            }
+#endif
             break;
         }
 
@@ -313,7 +441,7 @@ int main(void)
         case 'D': // Delete template
         case 'd':
         {
-            uint8_t pageId = 3; // index of the fingerprint in flash
+            uint8_t pageId = 1; // index of the fingerprint in flash
 
             MAIN_LOG("Delete template test");
 

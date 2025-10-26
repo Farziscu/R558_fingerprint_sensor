@@ -10,10 +10,15 @@
 #define R558_INS_UPIMAGE 0x0A          /* To upload image to upper computer */
 #define R558_INS_DELETE 0x0C           /* Delete templates */
 #define R558_INS_EMPTY 0x0D            /* Empty library */
+#define R558_INS_WRITE_REG 0x0E        /* Write module registers */
 #define R558_INS_VERIFYPWD 0x13        /* Verify password */
 #define R558_INS_READ_INF_PAGE 0x16    /* Read Information Page */
+#define R558_INS_WRITE_NOTEPD 0x18     /* Write Notepad */
+#define R558_INS_READ_NOTEPD 0x19      /* Read Notepad */
 #define R558_INS_TEMPNUM 0x1D          /* Template Num */
 #define R558_INS_SLEEP 0x33            /* Sleep */
+#define R558_INS_HANDSHAKE 0x35        /* Check whether the module works properly */
+#define R558_INS_CHECKSENSOR 0x36      /* Check whether the sensor works properly */
 #define R558_INS_LED_CONTROL 0x3C      /* LED Control */
 #define R558_INS_READ_SYS_PARA 0x0F    /* Read system Parameters */
 
@@ -22,14 +27,16 @@
 #define R558_CONFIRM_OK 0x00
 #define R558_CONFIRM_NOFINGER 0x02
 #define R558_CONFIRM_NOMATCH 0x09
+#define R558_CONFIRM_SENSOR_ABNORMAL 0x29
 
 /* Function number/code */
-#define R558_FC_NORMAL_BREATHING 0X01 // normal breathing light,
-#define R558_FC_FLASH_LIGHT 0X02      // flashing light,
-#define R558_FC_NORMAL_ON_LIGHT 0X03  // normally on light,
-#define R558_FC_NORMAL_OFF_LIGHT 0X04 // normally off light,
-#define R558_FC_GRADUALLY_ON 0X05     // Gradually on,
-#define R558_FC_GRADUALLY_OFF 0X06    // Gradually off
+#define R558_FC_NORMAL_BREATHING 0X01              // normal breathing light,
+#define R558_FC_FLASH_LIGHT 0X02                   // flashing light,
+#define R558_FC_NORMAL_ON_LIGHT 0X03               // normally on light,
+#define R558_FC_NORMAL_OFF_LIGHT 0X04              // normally off light,
+#define R558_FC_GRADUALLY_ON 0X05                  // Gradually on,
+#define R558_FC_GRADUALLY_OFF 0X06                 // Gradually off
+#define R558_FC_COLORFUL_PROGRAMMED_BREATHING 0X07 // Colorful programmed breathing light
 
 /* Starting color */
 #define R558_START_COLOR_BLUE_ON 0x01   // blue light on,
@@ -50,6 +57,57 @@
 #define R558_END_COLOR_YELLOW_ON 0x06 // yellow light on,
 #define R558_END_COLOR_WHITE_ON 0x07  // white light on,
 #define R558_END_COLOR_ALL_OFF 0x00   // all off.
+
+// LED Off: sleep state
+const uint8_t LED_SleepStateParams[4] = {
+    R558_FC_NORMAL_OFF_LIGHT,   // Function number
+    R558_START_COLOR_YELLOW_ON, // Starting color
+    R558_END_COLOR_YELLOW_ON,   // Ending color
+    0                           // Cycle times
+};
+
+// yellow ON: ready state
+const uint8_t LED_ReadyStateParams[4] = {
+    R558_FC_NORMAL_ON_LIGHT,    // Function number
+    R558_START_COLOR_YELLOW_ON, // Starting color
+    R558_END_COLOR_GREEN_ON,    // Ending color
+    3                           // Cycle times
+};
+
+// Flashing (blue|green): reading finger
+const uint8_t LED_ReadingFingerParams[8] = {
+    R558_FC_FLASH_LIGHT,       // Function number
+    R558_START_COLOR_GREEN_ON, // Starting color
+    R558_END_COLOR_GREEN_ON,   // Ending color
+    0                          // Cycle times
+};
+/*const uint8_t LED_ReadingFingerParams[8] = {
+    R558_FC_COLORFUL_PROGRAMMED_BREATHING, // Function number
+    15,                                    // Time bit
+    0xA0,                                  // Color1 H + L : valid+blue | valid+Green
+    0x00,                                  // Color2 H + L : No_valid | No_valid
+    0x00,                                  // Color3 H + L : No_valid | No_valid
+    0x00,                                  // Color4 H + L : No_valid | No_valid
+    0x00,                                  // Color5 H + L : No_valid | No_valid
+    0                                      // Cycle times
+};*/
+
+// Red: Fail verify | after 3sec goes to ready
+const uint8_t LED_FailVerifyParams[4] = {
+    R558_FC_FLASH_LIGHT,     // R558_FC_NORMAL_BREATHING, // Function number
+    R558_START_COLOR_RED_ON, // Starting color
+    R558_END_COLOR_RED_ON,   // Ending color
+    4                        // Cycle times
+};
+
+// Green: OK verify | after 3sec goes to ready
+const uint8_t LED_SuccessVerifyParams[4] = {
+    R558_FC_FLASH_LIGHT,       // R558_FC_NORMAL_BREATHING, // Function number
+    R558_START_COLOR_GREEN_ON, // Starting color
+    R558_END_COLOR_GREEN_ON,   // Ending color
+    4                          // Cycle times
+};
+
 /* LED Control params END */
 
 /* Read System Parameters */
@@ -112,3 +170,16 @@ typedef enum
     SENS_TIMEOUT = 0x03U,
     SENS_NO_MATCH = 0x04U
 } SENS_StatusTypeDef;
+
+#define R558_MAX_FINGERPRINT 100
+#define R558_PAGE_NO_MAX 16         // max number of pages
+#define R558_PAGE_SIZE_MAX 32       // size for each page
+#define R558_MAX_BYTE_FOR_100_FP 13 // number of byte to manage 100 fingerprints (1bit = 1fingerprint id).
+                                    // 13*8 = 104 bits, 4bits are unused.
+                                    // bit equal to 1 means ID busy. Bit equal to 0 means ID free
+
+enum Update_ID
+{
+    R558_UPDATE_RESET,
+    R558_UPDATE_SET
+};
