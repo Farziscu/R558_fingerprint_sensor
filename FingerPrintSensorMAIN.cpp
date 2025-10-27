@@ -441,11 +441,11 @@ int main(void)
         case 'D': // Delete template
         case 'd':
         {
-            uint8_t pageId = 1; // index of the fingerprint in flash
+            uint8_t fpIndex = 2; // index of the fingerprint in flash
 
             MAIN_LOG("Delete template test");
 
-            if (mySensor.R558_DeleteFingerprints(pageId, 2) != SENS_OK)
+            if (mySensor.R558_DeleteFingerprints(fpIndex, 2) != SENS_OK)
             {
                 MAIN_LOG("Delete template test FAILED!");
             }

@@ -11,6 +11,10 @@
 #include <fstream>
 #include <cstdint>
 
+#include <vector>
+#include <algorithm>
+#include <bit>
+
 #include "FingerPrintSensor.h"
 
 char Port_Name[][10] = {
@@ -723,8 +727,7 @@ SENS_StatusTypeDef R558::WaitForFingerPlacement(uint32_t timeout_ms)
 
 SENS_StatusTypeDef R558::FindNextIndex(uint8_t *idx)
 {
-    uint8_t selectedByte = 0;
-    uint8_t i = 0;
+    using namespace std;
 
     *idx = 0;
 
@@ -738,34 +741,21 @@ SENS_StatusTypeDef R558::FindNextIndex(uint8_t *idx)
         isNotepadDataValid = true;
     }
 
-    /* first 13(R558_MAX_BYTE_FOR_100_FP) bytes are used to store IDs free */
-    while (IDs_Table[i] == 0xFF)
+    vector<uint8_t> vectorPage(begin(IDs_Table), begin(IDs_Table) + R558_MAX_BYTE_FOR_100_FP);
+
+    /* looking for the first free position */
+    auto itVP = find_if(vectorPage.begin(), vectorPage.end(), [](const auto val)
+                        { return val != 0xFF; });
+
+    /* detect first 0 in the byte detected. i.e:  1111 1011. Free position in 6 */
+    if (itVP != vectorPage.end())
     {
-        i++;
-        if (i > R558_MAX_BYTE_FOR_100_FP)
-            break; // to count 100 (=R558_MAX_FINGERPRINT) fingerprints I need 13(R558_MAX_BYTE_FOR_100_FP) byte.
-    }
+        int dist = distance(vectorPage.begin(), itVP);
+        int countOne = std::__countl_one(*itVP);
 
-    if (i < R558_MAX_BYTE_FOR_100_FP)
-    {
-        selectedByte = IDs_Table[i];
-
-        *idx = *idx + 1;
-
-        while ((selectedByte & 0x80) != 0)
-        {
-            selectedByte = selectedByte << 1;
-            *idx = *idx + 1;
-            if (*idx == 8)
-                break;
-        }
-
-        *idx = *idx + (i * 8);
-        if (*idx > R558_MAX_FINGERPRINT)
-        {
-            return SENS_ERROR;
-        }
-        return SENS_OK;
+        *idx = ((dist * 8) + countOne) + 1;
+        if (*idx <= R558_MAX_FINGERPRINT)
+            return SENS_OK;
     }
 
     return SENS_ERROR;
@@ -773,6 +763,16 @@ SENS_StatusTypeDef R558::FindNextIndex(uint8_t *idx)
 
 SENS_StatusTypeDef R558::UpdateNextIndex(Update_ID choice, uint8_t idx)
 {
+    /* Reading 32 notepad user data */
+    if (!isNotepadDataValid)
+    {
+        if (R558_ReadNotepad(1, IDs_Table) != SENS_OK)
+        {
+            return SENS_ERROR;
+        }
+        isNotepadDataValid = true;
+    }
+
     uint8_t byteNo = (idx - 1) / 8;
     uint8_t bitNo = (idx - 1) % 8;
 
@@ -788,7 +788,9 @@ SENS_StatusTypeDef R558::UpdateNextIndex(Update_ID choice, uint8_t idx)
             IDs_Table[byteNo] &= ~(0x80 >> bitNo);
         }
 
+#if USE_DEBUG_LOG
         printArray("UpdateNextIndex", IDs_Table, 13);
+#endif
 
         return R558_WriteNotepad(1, IDs_Table);
     }
