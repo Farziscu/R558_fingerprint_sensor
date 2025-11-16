@@ -98,9 +98,8 @@ bool R558::openConnection()
     return true;
 }
 
-R558::R558()
+R558::R558() : R558(SER_P_COM4, SER_P_BAUDRATE_57600)
 {
-    R558(SER_P_COM4, SER_P_BAUDRATE_57600);
 }
 
 R558::R558(uint8_t serPort, int baudrate)
@@ -732,13 +731,13 @@ SENS_StatusTypeDef R558::FindNextIndex(uint8_t *idx)
     *idx = 0;
 
     /* Reading 32 notepad user data */
-    if (!isNotepadDataValid)
+    if (!IDs_Table_valid)
     {
         if (R558_ReadNotepad(1, IDs_Table) != SENS_OK)
         {
             return SENS_ERROR;
         }
-        isNotepadDataValid = true;
+        IDs_Table_valid = true;
     }
 
     vector<uint8_t> vectorPage(begin(IDs_Table), begin(IDs_Table) + R558_MAX_BYTE_FOR_100_FP);
@@ -764,13 +763,13 @@ SENS_StatusTypeDef R558::FindNextIndex(uint8_t *idx)
 SENS_StatusTypeDef R558::UpdateNextIndex(Update_ID choice, uint8_t idx)
 {
     /* Reading 32 notepad user data */
-    if (!isNotepadDataValid)
+    if (!IDs_Table_valid)
     {
         if (R558_ReadNotepad(1, IDs_Table) != SENS_OK)
         {
             return SENS_ERROR;
         }
-        isNotepadDataValid = true;
+        IDs_Table_valid = true;
     }
 
     uint8_t byteNo = (idx - 1) / 8;
